@@ -1,7 +1,6 @@
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
 const mongoSanitize = require("express-mongo-sanitize");
 const xss = require("xss-clean");
 const hpp = require("hpp");
@@ -10,6 +9,7 @@ require("dotenv").config();
 const authRoutes = require("./routes/auth");
 const studentRoutes = require("./routes/student");
 const teacherRoutes = require("./routes/teacher");
+const { apiLimiter, loginLimiter } = require("./middleware/rateLimiter");
 
 const app = express();
 
@@ -25,6 +25,10 @@ app.use(
         styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com"],
         scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
         imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: [
+          "'self'",
+          process.env.CORS_ORIGIN || "http://localhost:3000",
+        ],
       },
     },
     crossOriginEmbedderPolicy: false,
@@ -41,25 +45,10 @@ app.use(
   }),
 );
 
-// Security: Rate limiting for all routes
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
-  message: { error: "Too many requests from this IP, please try again later." },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use("/api/", limiter);
+// Security: Rate limiting for all API routes
+app.use("/api/", apiLimiter);
 
 // Security: Stricter rate limit for login
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.LOGIN_RATE_LIMIT) || 5,
-  message: {
-    error: "Too many login attempts, please try again after 15 minutes.",
-  },
-  skipSuccessfulRequests: true,
-});
 app.use("/api/auth/login", loginLimiter);
 
 // Security: Body parser with limits
@@ -81,6 +70,14 @@ app.use((req, res, next) => {
   next();
 });
 
+// Security: Request logging (in production)
+if (process.env.NODE_ENV === "production") {
+  app.use((req, res, next) => {
+    console.log(`[${req.requestTime}] ${req.method} ${req.path} - ${req.ip}`);
+    next();
+  });
+}
+
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/student", studentRoutes);
@@ -92,6 +89,7 @@ app.get("/api/health", (req, res) => {
     status: "OK",
     timestamp: req.requestTime,
     environment: process.env.NODE_ENV,
+    uptime: process.uptime(),
   });
 });
 
@@ -106,9 +104,13 @@ app.use((err, req, res, next) => {
 
   const isDev = process.env.NODE_ENV === "development";
 
-  res.status(err.status || 500).json({
-    error: err.status ? err.message : "Internal server error",
-    ...(isDev && { stack: err.stack }),
+  // Don't leak sensitive error details in production
+  const statusCode = err.status || 500;
+  const message = isDev ? err.message : "Internal server error";
+
+  res.status(statusCode).json({
+    error: message,
+    ...(isDev && { stack: err.stack, details: err }),
   });
 });
 
@@ -119,3 +121,5 @@ app.listen(PORT, () => {
   console.log(`🔒 Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`=================================`);
 });
+
+module.exports = app;

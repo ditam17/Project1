@@ -19,9 +19,11 @@ const validateLoginInput = (login_id, password) => {
     if (login_id.length < 3 || login_id.length > 50) {
       errors.push("Login ID must be 3-50 characters");
     }
-    // Alphanumeric only
-    if (!/^[a-zA-Z0-9_]+$/.test(login_id)) {
-      errors.push("Login ID must be alphanumeric");
+    // Allow alphanumeric, dots, and underscores (e.g., alisha.suwal, teacher1)
+    if (!/^[a-zA-Z0-9_.]+$/.test(login_id)) {
+      errors.push(
+        "Login ID can only contain letters, numbers, dots, and underscores",
+      );
     }
   }
 
@@ -35,7 +37,6 @@ const validateLoginInput = (login_id, password) => {
 };
 
 // Login with proper password hashing
-
 router.post("/login", async (req, res) => {
   const { login_id, password, role } = req.body;
 
@@ -47,6 +48,12 @@ router.post("/login", async (req, res) => {
 
   if (!["student", "teacher"].includes(role)) {
     return res.status(400).json({ error: "Invalid role" });
+  }
+
+  // Validate input format
+  const validationErrors = validateLoginInput(login_id, password);
+  if (validationErrors.length > 0) {
+    return res.status(400).json({ error: validationErrors.join(", ") });
   }
 
   try {
@@ -72,6 +79,12 @@ router.post("/login", async (req, res) => {
     if (!validPassword) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
+
+    // Update last login timestamp
+    await pool.query(
+      "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1",
+      [user.id],
+    );
 
     const token = jwt.sign(
       { userId: user.id, role: user.role, name: user.name },

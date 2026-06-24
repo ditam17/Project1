@@ -1,378 +1,179 @@
 const { exec } = require("child_process");
 const fs = require("fs-extra");
 const path = require("path");
+const os = require("os");
 const { v4: uuidv4 } = require("uuid");
 
 class CodeExecutionService {
-  // Security: Whitelist of allowed system calls
-  static ALLOWED_SYSCALLS = [
-    "read",
-    "write",
-    "open",
-    "close",
-    "fstat",
-    "lseek",
-    "mmap",
-    "mprotect",
-    "munmap",
-    "brk",
-    "access",
-    "exit_group",
-    "exit",
-    "arch_prctl",
-    "ioctl",
-    "getrandom",
-    "rt_sigaction",
-    "rt_sigreturn",
-    "clone",
-    "wait4",
-    "execve",
-    "getpid",
-    "getppid",
-    "getpgrp",
-    "setpgid",
-    "getrlimit",
-    "prlimit64",
-    "sched_getaffinity",
-    "sched_setaffinity",
-    "sched_yield",
-    "nanosleep",
-    "clock_gettime",
-    "gettimeofday",
-    "time",
-    "sysinfo",
-    "uname",
-    "getcwd",
-    "chdir",
-    "mkdir",
-    "rmdir",
-    "unlink",
-    "rename",
-    "chmod",
-    "fchmod",
-    "fchown",
-    "lchown",
-    "umask",
-    "dup",
-    "dup2",
-    "pipe",
-    "pipe2",
-    "select",
-    "poll",
-    "epoll_create",
-    "epoll_ctl",
-    "epoll_wait",
-    "eventfd2",
-    "timerfd_create",
-    "timerfd_settime",
-    "signalfd4",
-    "socket",
-    "socketpair",
-    "bind",
-    "listen",
-    "accept",
-    "connect",
-    "getsockname",
-    "getpeername",
-    "sendto",
-    "recvfrom",
-    "sendmsg",
-    "recvmsg",
-    "shutdown",
-    "setsockopt",
-    "getsockopt",
-    "readv",
-    "writev",
-    "pread64",
-    "pwrite64",
-    "preadv",
-    "pwritev",
-    "sendfile",
-    "splice",
-    "tee",
-    "vmsplice",
-    "copy_file_range",
-    "fcntl",
-    "flock",
-    "fsync",
-    "fdatasync",
-    "truncate",
-    "ftruncate",
-    "getdents",
-    "getdents64",
-    "statfs",
-    "fstatfs",
-    "sync",
-    "syncfs",
-    "setxattr",
-    "lsetxattr",
-    "fsetxattr",
-    "getxattr",
-    "lgetxattr",
-    "fgetxattr",
-    "listxattr",
-    "llistxattr",
-    "flistxattr",
-    "removexattr",
-    "lremovexattr",
-    "fremovexattr",
-    "fallocate",
-    "fadvise64",
-    "readahead",
-    "sync_file_range",
-    "timer_create",
-    "timer_gettime",
-    "timer_getoverrun",
-    "timer_settime",
-    "timer_delete",
-    "times",
-    "getrusage",
-    "prctl",
-    "capget",
-    "capset",
-    "sigaltstack",
-    "personality",
-    "ustat",
-    "statfs",
-    "fstatfs",
-    "sysfs",
-    "getpriority",
-    "setpriority",
-    "sched_getparam",
-    "sched_setparam",
-    "sched_getscheduler",
-    "sched_setscheduler",
-    "sched_get_priority_max",
-    "sched_get_priority_min",
-    "sched_rr_get_interval",
-    "mlock",
-    "munlock",
-    "mlockall",
-    "munlockall",
-    "vhangup",
-    "modify_ldt",
-    "pivot_root",
-    "_sysctl",
-    "prctl",
-    "adjtimex",
-    "setrlimit",
-    "chroot",
-    "sync",
-    "acct",
-    "settimeofday",
-    "mount",
-    "umount2",
-    "swapon",
-    "swapoff",
-    "reboot",
-    "sethostname",
-    "setdomainname",
-    "iopl",
-    "ioperm",
-    "create_module",
-    "init_module",
-    "delete_module",
-    "get_kernel_syms",
-    "query_module",
-    "quotactl",
-    "nfsservctl",
-    "getpmsg",
-    "putpmsg",
-    "afs_syscall",
-    "tuxcall",
-    "security",
-    "gettid",
-    "readahead",
-    "setxattr",
-    "lsetxattr",
-    "fsetxattr",
-    "getxattr",
-    "lgetxattr",
-    "fgetxattr",
-    "listxattr",
-    "llistxattr",
-    "flistxattr",
-    "removexattr",
-    "lremovexattr",
-    "fremovexattr",
-    "tkill",
-    "tgkill",
-    "futex",
-    "sched_setaffinity",
-    "sched_getaffinity",
-    "set_thread_area",
-    "get_thread_area",
-    "io_setup",
-    "io_destroy",
-    "io_getevents",
-    "io_submit",
-    "io_cancel",
-    "getdents64",
-    "set_tid_address",
-    "restart_syscall",
-    "semtimedop",
-    "fadvise64",
-    "timer_create",
-    "timer_settime",
-    "timer_gettime",
-    "timer_getoverrun",
-    "timer_delete",
-    "clock_settime",
-    "clock_gettime",
-    "clock_getres",
-    "clock_nanosleep",
-    "exit_group",
-    "epoll_wait",
-    "epoll_ctl",
-    "tgkill",
-    "utimes",
-    "vserver",
-    "mbind",
-    "set_mempolicy",
-    "get_mempolicy",
-    "mq_open",
-    "mq_unlink",
-    "mq_timedsend",
-    "mq_timedreceive",
-    "mq_notify",
-    "mq_getsetattr",
-    "kexec_load",
-    "waitid",
-    "add_key",
-    "request_key",
-    "keyctl",
-    "ioprio_set",
-    "ioprio_get",
-    "inotify_init",
-    "inotify_add_watch",
-    "inotify_rm_watch",
-    "migrate_pages",
-    "openat",
-    "mkdirat",
-    "mknodat",
-    "fchownat",
-    "futimesat",
-    "newfstatat",
-    "unlinkat",
-    "renameat",
-    "linkat",
-    "symlinkat",
-    "readlinkat",
-    "fchmodat",
-    "faccessat",
-    "pselect6",
-    "ppoll",
-    "unshare",
-    "set_robust_list",
-    "get_robust_list",
-    "splice",
-    "tee",
-    "sync_file_range",
-    "vmsplice",
-    "move_pages",
-    "utimensat",
-    "epoll_pwait",
-    "signalfd",
-    "timerfd_create",
-    "eventfd",
-    "fallocate",
-    "timerfd_settime",
-    "timerfd_gettime",
-    "accept4",
-    "signalfd4",
-    "eventfd2",
-    "epoll_create1",
-    "dup3",
-    "pipe2",
-    "inotify_init1",
-    "preadv",
-    "pwritev",
-    "rt_tgsigqueueinfo",
-    "perf_event_open",
-    "recvmmsg",
-    "fanotify_init",
-    "fanotify_mark",
-    "prlimit64",
-    "name_to_handle_at",
-    "open_by_handle_at",
-    "clock_adjtime",
-    "syncfs",
-    "sendmmsg",
-    "setns",
-    "getcpu",
-    "process_vm_readv",
-    "process_vm_writev",
-    "kcmp",
-    "finit_module",
-    "sched_setattr",
-    "sched_getattr",
-    "renameat2",
-    "seccomp",
-    "getrandom",
-    "memfd_create",
-    "kexec_file_load",
-    "bpf",
-    "execveat",
-    "userfaultfd",
-    "membarrier",
-    "mlock2",
-    "copy_file_range",
-    "preadv2",
-    "pwritev2",
-    "pkey_mprotect",
-    "pkey_alloc",
-    "pkey_free",
-    "statx",
-    "io_pgetevents",
-    "rseq",
-  ];
+  constructor() {
+    // Use OS temp directory (cross-platform)
+    this.baseTempDir = os.tmpdir();
+  }
 
-  async execute(code, language) {
+  /**
+   * Execute code against all test cases and return detailed results
+   */
+  async executeWithTests(
+    code,
+    language,
+    testCases,
+    timeLimit = 2,
+    memoryLimit = 64,
+  ) {
+    const results = [];
+    let totalPassed = 0;
+    let totalScore = 0;
+    let totalExecutionTime = 0;
+    let allOutputs = [];
+
+    for (let i = 0; i < testCases.length; i++) {
+      const testCase = testCases[i];
+      const startTime = Date.now();
+
+      const result = await this.runSingleTest(
+        code,
+        language,
+        testCase.input || "",
+        testCase.expected_output || "",
+        timeLimit,
+        memoryLimit,
+      );
+
+      const executionTime = Date.now() - startTime;
+      totalExecutionTime += executionTime;
+
+      if (result.passed) {
+        totalPassed++;
+      }
+
+      results.push({
+        testCaseIndex: i,
+        input: testCase.input,
+        expectedOutput: testCase.expected_output,
+        actualOutput: result.output,
+        passed: result.passed,
+        executionTimeMs: executionTime,
+        error: result.error || null,
+      });
+
+      allOutputs.push(result.output);
+    }
+
+    // Calculate score based on percentage of tests passed
+    const score =
+      testCases.length > 0
+        ? Math.round((totalPassed / testCases.length) * 100)
+        : 0;
+
+    return {
+      success: totalPassed === testCases.length,
+      score,
+      totalPassed,
+      totalTests: testCases.length,
+      executionTimeMs: totalExecutionTime,
+      results,
+      combinedOutput: allOutputs.join("\n"),
+    };
+  }
+
+  /**
+   * Run a single test case
+   */
+  async runSingleTest(
+    code,
+    language,
+    input,
+    expectedOutput,
+    timeLimit,
+    memoryLimit,
+  ) {
     const jobId = uuidv4();
-    const tempDir = path.join("C:\\tmp", `coding_${jobId}`);
+    const tempDir = path.join(this.baseTempDir, `coding_${jobId}`);
 
     try {
       await fs.ensureDir(tempDir);
 
-      const filename = language === "c" ? "main.c" : "main.cpp";
-      const compiler = language === "c" ? "gcc" : "g++";
+      const filename =
+        language === "c"
+          ? "main.c"
+          : language === "cpp"
+            ? "main.cpp"
+            : "main.py";
+      const compiler =
+        language === "c" ? "gcc" : language === "cpp" ? "g++" : "python3";
+      const compileCmd =
+        language === "c" || language === "cpp"
+          ? `${compiler} -o program ${filename} -O2 -Wall 2>&1`
+          : null;
 
       await fs.writeFile(path.join(tempDir, filename), code);
 
-      // Security: Use seccomp-bpf for syscall filtering
-      // Security: Run as non-root user inside container
-      // Security: Network disabled, read-only filesystem
-      // Security: Memory and CPU limits
-      // Security: Timeout for compilation and execution
+      // Write input to file for stdin piping
+      if (input) {
+        await fs.writeFile(path.join(tempDir, "input.txt"), input);
+      }
 
-      const dockerCmd = `docker run --rm \
-                --network none \
-                --memory="64m" \
-                --memory-swap="64m" \
-                --cpus="0.5" \
-                --pids-limit 10 \
-                --read-only \
-                --security-opt no-new-privileges:true \
-                --cap-drop ALL \
-                --user 1000:1000 \
-                -v ${tempDir}:/code:ro \
-                -w /code \
-                gcc:latest \
-                sh -c "timeout 5 ${compiler} -o /tmp/program ${filename} 2>&1 && timeout 2 /tmp/program" 2>&1`;
+      // Build Docker command with proper stdin handling
+      let dockerCmd;
+      if (language === "c" || language === "cpp") {
+        dockerCmd = `docker run --rm \
+          --network none \
+          --memory="${memoryLimit}m" \
+          --memory-swap="${memoryLimit}m" \
+          --cpus="0.5" \
+          --pids-limit 20 \
+          --read-only \
+          --security-opt no-new-privileges:true \
+          --cap-drop ALL \
+          --user 1000:1000 \
+          -v "${tempDir}:/code:rw" \
+          -w /code \
+          gcc:latest \
+          sh -c "${compileCmd} && timeout ${timeLimit} ./program < input.txt 2>&1" 2>&1`;
+      } else if (language === "python") {
+        dockerCmd = `docker run --rm \
+          --network none \
+          --memory="${memoryLimit}m" \
+          --memory-swap="${memoryLimit}m" \
+          --cpus="0.5" \
+          --pids-limit 20 \
+          --read-only \
+          --security-opt no-new-privileges:true \
+          --cap-drop ALL \
+          --user 1000:1000 \
+          -v "${tempDir}:/code:rw" \
+          -w /code \
+          python:3.11-slim \
+          sh -c "timeout ${timeLimit} python3 ${filename} < input.txt 2>&1" 2>&1`;
+      } else {
+        return { passed: false, output: "", error: "Unsupported language" };
+      }
 
       return new Promise((resolve) => {
         exec(
           dockerCmd,
           {
-            timeout: 15000,
+            timeout: (timeLimit + 5) * 1000, // Extra buffer for Docker overhead
             maxBuffer: 1024 * 1024,
             killSignal: "SIGKILL",
           },
           (error, stdout, stderr) => {
             fs.remove(tempDir).catch(() => {});
 
-            const output = stdout || stderr || "";
+            const output = (stdout || "").trim();
+            const errorOutput = (stderr || "").trim();
 
+            // Check for compilation errors
+            if (output.includes("error:") || errorOutput.includes("error:")) {
+              resolve({
+                passed: false,
+                output: output || errorOutput,
+                error: "Compilation Error",
+              });
+              return;
+            }
+
+            // Check for runtime errors (TLE, SIGKILL, etc.)
             if (error) {
               if (
                 error.killed ||
@@ -380,27 +181,55 @@ class CodeExecutionService {
                 error.signal === "SIGKILL"
               ) {
                 resolve({
-                  success: false,
-                  output: "Time Limit Exceeded (2 seconds max)",
+                  passed: false,
+                  output: "",
+                  error: "Time Limit Exceeded",
                 });
-              } else if (output.includes("error") || output.includes("Error")) {
-                resolve({ success: false, output: output });
               } else {
                 resolve({
-                  success: false,
-                  output: "Execution failed: " + output,
+                  passed: false,
+                  output: output || errorOutput,
+                  error: "Runtime Error",
                 });
               }
-            } else {
-              resolve({ success: true, output: output });
+              return;
             }
+
+            // Compare output (normalize whitespace)
+            const normalizedOutput = this.normalizeOutput(output);
+            const normalizedExpected = this.normalizeOutput(expectedOutput);
+            const passed = normalizedOutput === normalizedExpected;
+
+            resolve({
+              passed,
+              output: output,
+              error: passed ? null : "Wrong Answer",
+            });
           },
         );
       });
     } catch (err) {
       await fs.remove(tempDir).catch(() => {});
-      throw err;
+      return { passed: false, output: "", error: err.message };
     }
+  }
+
+  /**
+   * Simple compile-and-run (for the "Run Code" button without grading)
+   */
+  async execute(code, language) {
+    const result = await this.runSingleTest(code, language, "", "", 2, 64);
+    return {
+      success: !result.error,
+      output: result.output || result.error || "No output",
+    };
+  }
+
+  /**
+   * Normalize output for comparison (trim whitespace, normalize newlines)
+   */
+  normalizeOutput(output) {
+    return output.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
   }
 }
 
