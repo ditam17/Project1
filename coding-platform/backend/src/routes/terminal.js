@@ -37,7 +37,6 @@ const validateCode = (code, language) => {
 
 /**
  * Setup Socket.IO for interactive terminal
- * This function is called from app.js with the HTTP server
  */
 function setupSocketIO(httpServer) {
   const { Server } = require("socket.io");
@@ -154,7 +153,7 @@ router.get(
       }
       const result = await pool.query(
         `SELECT id, title, description, starter_code, language, points, time_limit, memory_limit
-       FROM questions WHERE language = $1 AND is_active = true ORDER BY id`,
+         FROM questions WHERE language = $1 AND is_active = true ORDER BY id`,
         [language],
       );
       res.json(result.rows);
@@ -174,9 +173,9 @@ router.get(
       const studentId = req.user.userId;
       const result = await pool.query(
         `SELECT COUNT(DISTINCT s.question_id) as solved_count, COALESCE(SUM(s.score), 0) as total_score,
-        COUNT(DISTINCT q.id) as total_questions FROM users u
-       LEFT JOIN submissions s ON s.student_id = u.id AND s.status = 'submitted'
-       LEFT JOIN questions q ON q.is_active = true WHERE u.id = $1 GROUP BY u.id`,
+         COUNT(DISTINCT q.id) as total_questions FROM users u
+         LEFT JOIN submissions s ON s.student_id = u.id AND s.status = 'submitted'
+         LEFT JOIN questions q ON q.is_active = true WHERE u.id = $1 GROUP BY u.id`,
         [studentId],
       );
       res.json(
@@ -192,7 +191,7 @@ router.get(
   },
 );
 
-// FIX: Compile and run code (simple execution for testing without WebSocket)
+// Compile and run code (simple execution for testing without WebSocket)
 router.post(
   "/compile",
   verifyToken,
@@ -203,7 +202,6 @@ router.post(
       const { code, language } = req.body;
       const error = validateCode(code, language);
       if (error) return res.status(400).json({ error });
-      // Use batch service for simple compile-run (no interactivity needed)
       const result = await BatchExecutionService.executeWithTests(
         code,
         language,
@@ -237,9 +235,9 @@ router.post(
       if (error) return res.status(400).json({ error });
       const result = await pool.query(
         `INSERT INTO submissions (student_id, question_id, code, language, status, ip_address)
-       VALUES ($1, $2, $3, $4, 'draft', $5)
-       ON CONFLICT (student_id, question_id)
-       DO UPDATE SET code = $3, status = 'draft', submitted_at = CURRENT_TIMESTAMP RETURNING *`,
+         VALUES ($1, $2, $3, $4, 'draft', $5)
+         ON CONFLICT (student_id, question_id)
+         DO UPDATE SET code = $3, status = 'draft', submitted_at = CURRENT_TIMESTAMP RETURNING *`,
         [studentId, question_id, code, language, req.ip || null],
       );
       res.json({ success: true, submission: result.rows[0] });
@@ -249,7 +247,7 @@ router.post(
   },
 );
 
-// Submit code with AUTO-GRADING
+// Submit code with AUTO-GRADING + terminal_output
 router.post(
   "/submit",
   verifyToken,
@@ -257,7 +255,7 @@ router.post(
   submissionLimiter,
   async (req, res, next) => {
     try {
-      const { question_id, code, language } = req.body;
+      const { question_id, code, language, terminal_output } = req.body;
       const studentId = req.user.userId;
       if (!question_id || isNaN(question_id))
         return res.status(400).json({ error: "Invalid question ID" });
@@ -289,16 +287,17 @@ router.post(
       );
 
       const submissionResult = await pool.query(
-        `INSERT INTO submissions (student_id, question_id, code, language, output, status, score, execution_time_ms, ip_address)
-       VALUES ($1, $2, $3, $4, $5, 'submitted', $6, $7, $8)
-       ON CONFLICT (student_id, question_id)
-       DO UPDATE SET code = $3, output = $5, status = 'submitted', score = $6, execution_time_ms = $7, submitted_at = CURRENT_TIMESTAMP RETURNING *`,
+        `INSERT INTO submissions (student_id, question_id, code, language, output, terminal_output, status, score, execution_time_ms, ip_address)
+         VALUES ($1, $2, $3, $4, $5, $6, 'submitted', $7, $8, $9)
+         ON CONFLICT (student_id, question_id)
+         DO UPDATE SET code = $3, output = $5, terminal_output = $6, status = 'submitted', score = $7, execution_time_ms = $8, submitted_at = CURRENT_TIMESTAMP RETURNING *`,
         [
           studentId,
           question_id,
           code,
           language,
           gradingResult.combinedOutput,
+          terminal_output || gradingResult.combinedOutput,
           finalScore,
           gradingResult.executionTimeMs,
           req.ip || null,
@@ -313,7 +312,7 @@ router.post(
       for (const testResult of gradingResult.results) {
         await pool.query(
           `INSERT INTO test_results (submission_id, test_case_index, input, expected_output, actual_output, passed, execution_time_ms, file_results)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
             submission.id,
             testResult.testCaseIndex,
@@ -354,12 +353,35 @@ router.get(
       const studentId = req.user.userId;
       const result = await pool.query(
         `SELECT s.*, q.title as question_title, q.points as total_points,
-        (SELECT json_agg(t.*) FROM test_results t WHERE t.submission_id = s.id) as test_results
-       FROM submissions s JOIN questions q ON s.question_id = q.id
-       WHERE s.student_id = $1 AND s.question_id = $2 ORDER BY s.submitted_at DESC`,
+         (SELECT json_agg(t.*) FROM test_results t WHERE t.submission_id = s.id) as test_results
+         FROM submissions s JOIN questions q ON s.question_id = q.id
+         WHERE s.student_id = $1 AND s.question_id = $2 ORDER BY s.submitted_at DESC`,
         [studentId, question_id],
       );
       res.json(result.rows);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Get submission status for all questions (for submitted ticks)
+router.get(
+  "/submission-status",
+  verifyToken,
+  requireRole("student"),
+  async (req, res, next) => {
+    try {
+      const studentId = req.user.userId;
+      const result = await pool.query(
+        `SELECT question_id, status FROM submissions WHERE student_id = $1`,
+        [studentId],
+      );
+      const statusMap = {};
+      result.rows.forEach((row) => {
+        statusMap[row.question_id] = row.status;
+      });
+      res.json(statusMap);
     } catch (err) {
       next(err);
     }
@@ -389,4 +411,5 @@ router.get(
   },
 );
 
-module.exports = { router, setupSocketIO };
+module.exports = router;
+module.exports.setupSocketIO = setupSocketIO;

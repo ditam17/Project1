@@ -1,142 +1,160 @@
 const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
+const {
+  codeExecutionLimiter,
+  submissionLimiter,
+} = require("../middleware/rateLimiter");
+const InteractiveTerminalService = require("../services/InteractiveTerminalService");
+const BatchExecutionService = require("../services/BatchExecutionService");
+const PlagiarismDetector = require("../utils/similarity");
 const pool = require("../config/database");
 const router = express.Router();
 
-// Get all students with submission status and scores
-router.get(
-  "/students",
-  verifyToken,
-  requireRole("teacher"),
-  async (req, res, next) => {
-    try {
-      const result = await pool.query(
-        `SELECT 
-          u.id,
-          u.login_id,
-          u.name,
-          u.created_at,
-          u.last_login,
-          COUNT(DISTINCT q.id) as total_questions,
-          COUNT(DISTINCT s.question_id) as attempted_count,
-          COALESCE(SUM(DISTINCT s.score), 0) as total_score,
-          COALESCE(AVG(s.score), 0) as average_score
-         FROM users u
-         LEFT JOIN questions q ON q.is_active = true
-         LEFT JOIN submissions s ON s.student_id = u.id AND s.status = 'submitted'
-         WHERE u.role = 'student'
-         GROUP BY u.id, u.login_id, u.name, u.created_at, u.last_login
-         ORDER BY u.name`,
-      );
-
-      const students = result.rows.map((s) => ({
-        ...s,
-        total_questions: parseInt(s.total_questions),
-        attempted_count: parseInt(s.attempted_count),
-        total_score: parseInt(s.total_score) || 0,
-        average_score: parseFloat(s.average_score) || 0,
-        completion_rate:
-          s.total_questions > 0
-            ? Math.round(
-                (parseInt(s.attempted_count) / parseInt(s.total_questions)) *
-                  100,
-              )
-            : 0,
-        status:
-          parseInt(s.attempted_count) >= parseInt(s.total_questions)
-            ? "completed"
-            : "pending",
-      }));
-
-      res.json({
-        total: students.length,
-        completed: students.filter((s) => s.status === "completed"),
-        pending: students.filter((s) => s.status === "pending"),
-        students,
-      });
-    } catch (err) {
-      next(err);
+// Security: Input validation
+const validateCode = (code, language) => {
+  if (!code || typeof code !== "string") return "Code is required";
+  if (code.length > 10000) return "Code too long (max 10KB)";
+  if (!language || !["c", "cpp", "python", "java"].includes(language)) {
+    return "Invalid language. Supported: c, cpp, python, java";
+  }
+  const dangerous = [
+    /system\s*\(/i,
+    /exec\s*\(/i,
+    /popen\s*\(/i,
+    /fork\s*\(/i,
+    /remove\s*\(/i,
+    /unlink\s*\(/i,
+    /socket\s*\(/i,
+    /connect\s*\(/i,
+  ];
+  for (const pattern of dangerous) {
+    if (pattern.test(code)) {
+      return "Code contains forbidden system calls. Remove system(), exec(), fork(), or network calls.";
     }
-  },
-);
+  }
+  return null;
+};
 
-// Get class analytics
-router.get(
-  "/analytics",
-  verifyToken,
-  requireRole("teacher"),
-  async (req, res, next) => {
+/**
+ * Setup Socket.IO for interactive terminal
+ */
+function setupSocketIO(httpServer) {
+  const { Server } = require("socket.io");
+  const io = new Server(httpServer, {
+    cors: {
+      origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+      credentials: true,
+    },
+    path: "/socket.io",
+  });
+
+  const terminalNamespace = io.of("/terminal");
+
+  terminalNamespace.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    if (!token) return next(new Error("Authentication required"));
     try {
-      // Overall class stats
-      const classStats = await pool.query(
-        `SELECT 
-          COUNT(DISTINCT u.id) as total_students,
-          COUNT(DISTINCT s.student_id) as active_students,
-          COALESCE(AVG(s.score), 0) as class_average,
-          COALESCE(MAX(s.score), 0) as highest_score,
-          COALESCE(MIN(s.score), 0) as lowest_score
-         FROM users u
-         LEFT JOIN submissions s ON s.student_id = u.id AND s.status = 'submitted'
-         WHERE u.role = 'student'`,
-      );
-
-      // Per-question stats
-      const questionStats = await pool.query(
-        `SELECT 
-          q.id,
-          q.title,
-          q.language,
-          q.points,
-          COUNT(DISTINCT s.student_id) as attempts,
-          COALESCE(AVG(s.score), 0) as average_score,
-          COALESCE(MAX(s.score), 0) as max_score,
-          COUNT(DISTINCT CASE WHEN s.score = q.points THEN s.student_id END) as perfect_submissions
-         FROM questions q
-         LEFT JOIN submissions s ON s.question_id = q.id AND s.status = 'submitted'
-         WHERE q.is_active = true
-         GROUP BY q.id, q.title, q.language, q.points
-         ORDER BY q.id`,
-      );
-
-      // Recent activity
-      const recentActivity = await pool.query(
-        `SELECT 
-          u.name as student_name,
-          q.title as question_title,
-          s.score,
-          s.status,
-          s.submitted_at,
-          s.execution_time_ms
-         FROM submissions s
-         JOIN users u ON s.student_id = u.id
-         JOIN questions q ON s.question_id = q.id
-         ORDER BY s.submitted_at DESC
-         LIMIT 20`,
-      );
-
-      res.json({
-        class: classStats.rows[0],
-        questions: questionStats.rows,
-        recentActivity: recentActivity.rows,
-      });
+      const jwt = require("jsonwebtoken");
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      socket.user = decoded;
+      next();
     } catch (err) {
-      next(err);
+      next(new Error("Invalid token"));
     }
-  },
-);
+  });
 
-// Get all questions
+  terminalNamespace.on("connection", (socket) => {
+    console.log(`Terminal client connected: ${socket.id}`);
+    let currentSessionId = null;
+
+    socket.on("start", async (data) => {
+      const { code, language } = data;
+      if (socket.user.role !== "student") {
+        socket.emit("error", { message: "Only students can use the terminal" });
+        return;
+      }
+      const validationError = validateCode(code, language);
+      if (validationError) {
+        socket.emit("error", { message: validationError });
+        return;
+      }
+      if (currentSessionId) {
+        await InteractiveTerminalService.killSession(currentSessionId);
+      }
+      const result = await InteractiveTerminalService.startSession(
+        code,
+        language,
+      );
+      if (!result.success) {
+        socket.emit("error", { message: result.error });
+        return;
+      }
+      currentSessionId = result.sessionId;
+      socket.emit("started", { sessionId: result.sessionId });
+      InteractiveTerminalService.setupOutputListeners(
+        result.sessionId,
+        (output) => socket.emit("output", { data: output }),
+        (error) => socket.emit("output", { data: error, isError: true }),
+        (code) => {
+          socket.emit("exit", { code });
+          currentSessionId = null;
+        },
+      );
+    });
+
+    socket.on("input", (data) => {
+      if (!currentSessionId) {
+        socket.emit("error", { message: "No active session" });
+        return;
+      }
+      const result = InteractiveTerminalService.sendInput(
+        currentSessionId,
+        data.input,
+      );
+      if (!result.success) socket.emit("error", { message: result.error });
+    });
+
+    socket.on("special_key", (data) => {
+      if (!currentSessionId) return;
+      InteractiveTerminalService.sendSpecialKey(currentSessionId, data.key);
+    });
+
+    socket.on("kill", async () => {
+      if (currentSessionId) {
+        await InteractiveTerminalService.killSession(currentSessionId);
+        currentSessionId = null;
+        socket.emit("killed");
+      }
+    });
+
+    socket.on("disconnect", async () => {
+      if (currentSessionId) {
+        await InteractiveTerminalService.killSession(currentSessionId);
+      }
+      console.log(`Terminal client disconnected: ${socket.id}`);
+    });
+  });
+
+  return io;
+}
+
+// REST API routes
+
+// Get questions by language
 router.get(
-  "/questions",
+  "/questions/:language",
   verifyToken,
-  requireRole("teacher"),
+  requireRole("student"),
   async (req, res, next) => {
     try {
+      const { language } = req.params;
+      if (!["c", "cpp", "python", "java"].includes(language)) {
+        return res.status(400).json({ error: "Invalid language" });
+      }
       const result = await pool.query(
-        `SELECT id, title, language, points, is_active, created_at,
-          (SELECT COUNT(*) FROM submissions WHERE question_id = questions.id) as submission_count
-         FROM questions 
-         ORDER BY id`,
+        `SELECT id, title, description, starter_code, language, points, time_limit, memory_limit
+         FROM questions WHERE language = $1 AND is_active = true ORDER BY id`,
+        [language],
       );
       res.json(result.rows);
     } catch (err) {
@@ -145,123 +163,201 @@ router.get(
   },
 );
 
-// Create new question
-router.post(
-  "/questions",
+// Get progress
+router.get(
+  "/progress",
   verifyToken,
-  requireRole("teacher"),
+  requireRole("student"),
   async (req, res, next) => {
     try {
-      const {
-        title,
-        description,
-        language,
-        starter_code,
-        test_cases,
-        time_limit,
-        memory_limit,
-        points,
-      } = req.body;
-      const teacherId = req.user.userId;
-
+      const studentId = req.user.userId;
       const result = await pool.query(
-        `INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         RETURNING *`,
+        `SELECT COUNT(DISTINCT s.question_id) as solved_count, COALESCE(SUM(s.score), 0) as total_score,
+         COUNT(DISTINCT q.id) as total_questions FROM users u
+         LEFT JOIN submissions s ON s.student_id = u.id AND s.status = 'submitted'
+         LEFT JOIN questions q ON q.is_active = true WHERE u.id = $1 GROUP BY u.id`,
+        [studentId],
+      );
+      res.json(
+        result.rows[0] || {
+          solved_count: 0,
+          total_score: 0,
+          total_questions: 0,
+        },
+      );
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Compile and run code (simple execution for testing without WebSocket)
+router.post(
+  "/compile",
+  verifyToken,
+  requireRole("student"),
+  codeExecutionLimiter,
+  async (req, res, next) => {
+    try {
+      const { code, language } = req.body;
+      const error = validateCode(code, language);
+      if (error) return res.status(400).json({ error });
+      const result = await BatchExecutionService.executeWithTests(
+        code,
+        language,
+        [{ input: "", expected_output: "" }],
+        2,
+        64,
+      );
+      res.json({
+        success: !result.error,
+        output:
+          result.results[0]?.output || result.results[0]?.error || "No output",
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Save draft
+router.post(
+  "/draft",
+  verifyToken,
+  requireRole("student"),
+  async (req, res, next) => {
+    try {
+      const { question_id, code, language } = req.body;
+      const studentId = req.user.userId;
+      if (!question_id || isNaN(question_id))
+        return res.status(400).json({ error: "Invalid question ID" });
+      const error = validateCode(code, language);
+      if (error) return res.status(400).json({ error });
+      const result = await pool.query(
+        `INSERT INTO submissions (student_id, question_id, code, language, status, ip_address)
+         VALUES ($1, $2, $3, $4, 'draft', $5)
+         ON CONFLICT (student_id, question_id)
+         DO UPDATE SET code = $3, status = 'draft', submitted_at = CURRENT_TIMESTAMP RETURNING *`,
+        [studentId, question_id, code, language, req.ip || null],
+      );
+      res.json({ success: true, submission: result.rows[0] });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Submit code with AUTO-GRADING + terminal_output
+router.post(
+  "/submit",
+  verifyToken,
+  requireRole("student"),
+  submissionLimiter,
+  async (req, res, next) => {
+    try {
+      const { question_id, code, language, terminal_output } = req.body;
+      const studentId = req.user.userId;
+      if (!question_id || isNaN(question_id))
+        return res.status(400).json({ error: "Invalid question ID" });
+      const error = validateCode(code, language);
+      if (error) return res.status(400).json({ error });
+
+      const questionResult = await pool.query(
+        `SELECT test_cases, time_limit, memory_limit, points FROM questions WHERE id = $1 AND is_active = true`,
+        [question_id],
+      );
+      if (questionResult.rows.length === 0)
+        return res
+          .status(404)
+          .json({ error: "Question not found or inactive" });
+
+      const question = questionResult.rows[0];
+      const testCases = question.test_cases || [];
+
+      const gradingResult = await BatchExecutionService.executeWithTests(
+        code,
+        language,
+        testCases,
+        question.time_limit || 2,
+        question.memory_limit || 64,
+      );
+
+      const finalScore = Math.round(
+        (gradingResult.score / 100) * (question.points || 10),
+      );
+
+      const submissionResult = await pool.query(
+        `INSERT INTO submissions (student_id, question_id, code, language, output, terminal_output, status, score, execution_time_ms, ip_address)
+         VALUES ($1, $2, $3, $4, $5, $6, 'submitted', $7, $8, $9)
+         ON CONFLICT (student_id, question_id)
+         DO UPDATE SET code = $3, output = $5, terminal_output = $6, status = 'submitted', score = $7, execution_time_ms = $8, submitted_at = CURRENT_TIMESTAMP RETURNING *`,
         [
-          title,
-          description,
+          studentId,
+          question_id,
+          code,
           language,
-          starter_code,
-          JSON.stringify(test_cases || []),
-          time_limit || 2,
-          memory_limit || 64,
-          points || 10,
-          teacherId,
+          gradingResult.combinedOutput,
+          terminal_output || gradingResult.combinedOutput,
+          finalScore,
+          gradingResult.executionTimeMs,
+          req.ip || null,
         ],
       );
 
-      res.json({ success: true, question: result.rows[0] });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
+      const submission = submissionResult.rows[0];
+      await pool.query(`DELETE FROM test_results WHERE submission_id = $1`, [
+        submission.id,
+      ]);
 
-// Toggle question active status
-router.patch(
-  "/questions/:id/toggle",
-  verifyToken,
-  requireRole("teacher"),
-  async (req, res, next) => {
-    try {
-      const { id } = req.params;
-      const result = await pool.query(
-        `UPDATE questions SET is_active = NOT is_active, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1 RETURNING *`,
-        [id],
-      );
-      res.json({ success: true, question: result.rows[0] });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
-
-// Get specific student's submission
-router.get(
-  "/submission/:student_id/:question_id",
-  verifyToken,
-  requireRole("teacher"),
-  async (req, res, next) => {
-    try {
-      const { student_id, question_id } = req.params;
-
-      if (
-        !student_id ||
-        isNaN(student_id) ||
-        !question_id ||
-        isNaN(question_id)
-      ) {
-        return res.status(400).json({ error: "Invalid parameters" });
+      for (const testResult of gradingResult.results) {
+        await pool.query(
+          `INSERT INTO test_results (submission_id, test_case_index, input, expected_output, actual_output, passed, execution_time_ms, file_results)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            submission.id,
+            testResult.testCaseIndex,
+            testResult.input,
+            testResult.expectedOutput,
+            testResult.actualOutput,
+            testResult.passed,
+            testResult.executionTimeMs,
+            testResult.fileResults,
+          ],
+        );
       }
 
-      const result = await pool.query(
-        `SELECT s.*, q.title, q.description, q.test_cases, u.name as student_name,
-          (SELECT json_agg(t.*) FROM test_results t WHERE t.submission_id = s.id) as test_results
-         FROM submissions s
-         JOIN questions q ON s.question_id = q.id
-         JOIN users u ON s.student_id = u.id
-         WHERE s.student_id = $1 AND s.question_id = $2`,
-        [student_id, question_id],
-      );
-
-      res.json(result.rows[0] || null);
+      res.json({
+        success: gradingResult.success,
+        score: finalScore,
+        totalPoints: question.points || 10,
+        totalPassed: gradingResult.totalPassed,
+        totalTests: gradingResult.totalTests,
+        executionTimeMs: gradingResult.executionTimeMs,
+        results: gradingResult.results,
+        submission: submission,
+      });
     } catch (err) {
       next(err);
     }
   },
 );
 
-// Get all submissions for a student
+// Get submissions
 router.get(
-  "/submissions/:student_id",
+  "/submissions/:question_id",
   verifyToken,
-  requireRole("teacher"),
+  requireRole("student"),
   async (req, res, next) => {
     try {
-      const { student_id } = req.params;
-
+      const { question_id } = req.params;
+      const studentId = req.user.userId;
       const result = await pool.query(
         `SELECT s.*, q.title as question_title, q.points as total_points,
-          (SELECT json_agg(t.*) FROM test_results t WHERE t.submission_id = s.id) as test_results
-         FROM submissions s
-         JOIN questions q ON s.question_id = q.id
-         WHERE s.student_id = $1
-         ORDER BY s.submitted_at DESC`,
-        [student_id],
+         (SELECT json_agg(t.*) FROM test_results t WHERE t.submission_id = s.id) as test_results
+         FROM submissions s JOIN questions q ON s.question_id = q.id
+         WHERE s.student_id = $1 AND s.question_id = $2 ORDER BY s.submitted_at DESC`,
+        [studentId, question_id],
       );
-
       res.json(result.rows);
     } catch (err) {
       next(err);
@@ -269,35 +365,50 @@ router.get(
   },
 );
 
-// Get submission audit log
+// Get submission status for all questions (for submitted ticks)
 router.get(
-  "/audit-log",
+  "/submission-status",
   verifyToken,
-  requireRole("teacher"),
+  requireRole("student"),
   async (req, res, next) => {
     try {
+      const studentId = req.user.userId;
       const result = await pool.query(
-        `SELECT
-          s.id,
-          u.name as student_name,
-          u.login_id,
-          q.title as question_title,
-          s.status,
-          s.score,
-          s.submitted_at,
-          s.ip_address,
-          s.execution_time_ms
-         FROM submissions s
-         JOIN users u ON s.student_id = u.id
-         JOIN questions q ON s.question_id = q.id
-         ORDER BY s.submitted_at DESC
-         LIMIT 100`,
+        `SELECT question_id, status FROM submissions WHERE student_id = $1`,
+        [studentId],
       );
-      res.json(result.rows);
+      const statusMap = {};
+      result.rows.forEach((row) => {
+        statusMap[row.question_id] = row.status;
+      });
+      res.json(statusMap);
     } catch (err) {
       next(err);
     }
   },
 );
 
-module.exports = router;
+// Get plagiarism
+router.get(
+  "/plagiarism/:question_id",
+  verifyToken,
+  requireRole("student"),
+  async (req, res, next) => {
+    try {
+      const { question_id } = req.params;
+      const studentId = req.user.userId;
+      if (!question_id || isNaN(question_id))
+        return res.status(400).json({ error: "Invalid question ID" });
+      const matches = await PlagiarismDetector.findPlagiarismMatches(
+        studentId,
+        question_id,
+        pool,
+      );
+      res.json(matches);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+module.exports = { router, setupSocketIO };

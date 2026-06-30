@@ -40,11 +40,11 @@ const Login = () => {
   const fillDemo = (type) => {
     if (type === "teacher") {
       setLoginId("teacher1");
-      setPassword("teacher123");
+      setPassword("Teacher@123"); // FIXED: Matches DB
       setRole("teacher");
     } else {
-      setLoginId("student01");
-      setPassword("student123");
+      setLoginId("alisha.suwal"); // FIXED: Real student from DB
+      setPassword("Student@123"); // FIXED: Matches DB
       setRole("student");
     }
   };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import { io } from "socket.io-client";
 import { Terminal } from "xterm";
@@ -24,15 +24,78 @@ const StudentPortal = () => {
     total_questions: 0,
   });
   const [terminalReady, setTerminalReady] = useState(false);
+  const [pasteWarning, setPasteWarning] = useState(false);
+  const [submissionStatus, setSubmissionStatus] = useState({}); // NEW: Track submitted questions
+  const [isSubmitted, setIsSubmitted] = useState(false); // NEW: Current question submitted state
+  const [isEditing, setIsEditing] = useState(false); // NEW: Edit mode after submission
+  const [terminalOutput, setTerminalOutput] = useState(""); // NEW: Accumulate terminal output
 
   const terminalRef = useRef(null);
   const terminalInstance = useRef(null);
   const fitAddon = useRef(null);
   const socketRef = useRef(null);
+  const editorRef = useRef(null);
+  const monacoRef = useRef(null);
+  const terminalOutputRef = useRef(""); // Ref to accumulate output without re-renders
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const token = localStorage.getItem("token");
 
-  // Initialize xterm.js terminal with proper sizing - using requestAnimationFrame
+  // ============================================
+  // COPY-PASTE PREVENTION
+  // ============================================
+  const handleEditorDidMount = (editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+
+    // Block Ctrl+V / Cmd+V via keydown
+    editor.onKeyDown((e) => {
+      const keyCode = e.keyCode;
+      const ctrl = e.ctrlKey;
+      const meta = e.metaKey;
+
+      if ((ctrl || meta) && keyCode === monaco.KeyCode.KeyV) {
+        e.preventDefault();
+        e.stopPropagation();
+        showPasteWarning();
+        return false;
+      }
+
+      if (e.shiftKey && keyCode === monaco.KeyCode.Insert) {
+        e.preventDefault();
+        e.stopPropagation();
+        showPasteWarning();
+        return false;
+      }
+    });
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
+      showPasteWarning();
+      return null;
+    });
+
+    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Insert, () => {
+      showPasteWarning();
+      return null;
+    });
+
+    editor.updateOptions({ contextmenu: false });
+  };
+
+  const showPasteWarning = () => {
+    setPasteWarning(true);
+    setTimeout(() => setPasteWarning(false), 3000);
+  };
+
+  const handleContainerPaste = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showPasteWarning();
+    return false;
+  };
+
+  // ============================================
+  // TERMINAL INITIALIZATION
+  // ============================================
   useEffect(() => {
     let term = null;
     let rafId = null;
@@ -47,7 +110,6 @@ const StudentPortal = () => {
         return;
       }
 
-      // Clean up any existing terminal
       if (terminalInstance.current) {
         terminalInstance.current.dispose();
         terminalInstance.current = null;
@@ -81,7 +143,6 @@ const StudentPortal = () => {
       term.loadAddon(fitAddon.current);
       term.open(container);
 
-      // Defer fit to next frame to avoid ResizeObserver loop error
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           try {
@@ -92,15 +153,35 @@ const StudentPortal = () => {
         });
       });
 
-      term.writeln("[32m● Interactive Terminal Ready[0m");
+      term.writeln("● Interactive Terminal Ready");
       term.writeln("Click '▶️ Run Code' to start your program.");
-      term.writeln("Type input directly when the program asks for it.");
+      term.writeln("Type input and press Enter when the program asks for it.");
       term.writeln("");
 
-      // Handle user typing in terminal - send to running program
+      // OPTIMIZED: Buffer input until Enter is pressed
+      let inputBuffer = "";
       term.onData((data) => {
-        if (socketRef.current && socketRef.current.connected) {
-          socketRef.current.emit("input", { input: data });
+        if (!socketRef.current || !socketRef.current.connected) return;
+
+        // Echo the character to terminal for visual feedback
+        term.write(data);
+
+        // Check for Enter key (\r or \n)
+        if (data === "\r" || data === "\n") {
+          // Send the complete buffered line
+          const lineToSend = inputBuffer;
+          inputBuffer = "";
+          term.write("\r\n"); // New line in terminal
+          socketRef.current.emit("input", { input: lineToSend + "\n" });
+        } else if (data === "\x7f" || data === "\b") {
+          // Backspace handling
+          if (inputBuffer.length > 0) {
+            inputBuffer = inputBuffer.slice(0, -1);
+            term.write("\b \b"); // Erase character visually
+          }
+        } else {
+          // Accumulate character
+          inputBuffer += data;
         }
       });
 
@@ -108,16 +189,13 @@ const StudentPortal = () => {
       setTerminalReady(true);
     };
 
-    // Use requestAnimationFrame instead of setTimeout for better timing
     rafId = requestAnimationFrame(() => {
       rafId = requestAnimationFrame(initTerminal);
     });
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
-      if (term) {
-        term.dispose();
-      }
+      if (term) term.dispose();
       if (terminalInstance.current) {
         terminalInstance.current.dispose();
         terminalInstance.current = null;
@@ -132,14 +210,18 @@ const StudentPortal = () => {
   useEffect(() => {
     fetchQuestions();
     fetchProgress();
+    fetchSubmissionStatus();
   }, [language]);
 
   useEffect(() => {
     if (selectedQuestion) {
       fetchSubmissions(selectedQuestion.id);
       fetchPlagiarism(selectedQuestion.id);
+      // Check if this question is already submitted
+      setIsSubmitted(submissionStatus[selectedQuestion.id] === "submitted");
+      setIsEditing(false);
     }
-  }, [selectedQuestion]);
+  }, [selectedQuestion, submissionStatus]);
 
   const fetchQuestions = async () => {
     try {
@@ -156,6 +238,16 @@ const StudentPortal = () => {
       setProgress(res.data);
     } catch (err) {
       console.error("Failed to fetch progress", err);
+    }
+  };
+
+  // NEW: Fetch submission status for all questions
+  const fetchSubmissionStatus = async () => {
+    try {
+      const res = await api.get("/student/submission-status");
+      setSubmissionStatus(res.data);
+    } catch (err) {
+      console.error("Failed to fetch submission status", err);
     }
   };
 
@@ -182,24 +274,30 @@ const StudentPortal = () => {
     setCode(q.starter_code || "");
     setOutput("");
     setTestResults(null);
+    setTerminalOutput("");
+    terminalOutputRef.current = "";
+    setIsSubmitted(false);
+    setIsEditing(false);
     if (terminalInstance.current) {
       terminalInstance.current.clear();
-      terminalInstance.current.writeln("[32m● Interactive Terminal Ready[0m");
-      terminalInstance.current.writeln(
-        "Click '▶️ Run Code' to start your program.",
-      );
+      terminalInstance.current.writeln("● Interactive Terminal Ready");
+      terminalInstance.current.writeln("Click '▶️ Run Code' to start your program.");
     }
   };
 
-  // INTERACTIVE RUN: Start a persistent session via WebSocket
+  // INTERACTIVE RUN - OPTIMIZED
   const handleRunCode = async () => {
     if (!selectedQuestion || !terminalReady) return;
 
     const term = terminalInstance.current;
     setIsRunning(true);
     term.clear();
-    term.writeln("[33m⏳ Compiling and starting program...[0m");
+    term.writeln("⏳ Compiling and starting program...");
     term.writeln("");
+
+    // Reset output accumulator
+    terminalOutputRef.current = "⏳ Compiling and starting program...\n\n";
+    setTerminalOutput("");
 
     if (socketRef.current) {
       socketRef.current.disconnect();
@@ -219,27 +317,33 @@ const StudentPortal = () => {
     });
 
     socket.on("started", (data) => {
-      term.writeln("[32m✅ Program started![0m");
-      term.writeln("[36m──────────────────────────────────────[0m");
+      term.writeln("✅ Program started!");
+      term.writeln("──────────────────────────────────────");
       term.writeln("");
+      terminalOutputRef.current += "✅ Program started!\n──────────────────────────────────────\n\n";
     });
 
     socket.on("output", (data) => {
       term.write(data.data);
+      terminalOutputRef.current += data.data;
     });
 
     socket.on("exit", (data) => {
       term.writeln("");
-      term.writeln("[36m──────────────────────────────────────[0m");
-      term.writeln(`[33m🏁 Program exited with code: ${data.code}[0m`);
+      term.writeln("──────────────────────────────────────");
+      term.writeln(`🏁 Program exited with code: ${data.code}`);
+      terminalOutputRef.current += `\n──────────────────────────────────────\n🏁 Program exited with code: ${data.code}\n`;
       setIsRunning(false);
+      setTerminalOutput(terminalOutputRef.current);
       socket.disconnect();
     });
 
     socket.on("error", (data) => {
       term.writeln("");
-      term.writeln(`[31m❌ Error: ${data.message}[0m`);
+      term.writeln(`❌ Error: ${data.message}`);
+      terminalOutputRef.current += `\n❌ Error: ${data.message}\n`;
       setIsRunning(false);
+      setTerminalOutput(terminalOutputRef.current);
       socket.disconnect();
     });
 
@@ -248,8 +352,10 @@ const StudentPortal = () => {
     });
 
     socket.on("connect_error", (err) => {
-      term.writeln(`[31m❌ Connection error: ${err.message}[0m`);
+      term.writeln(`❌ Connection error: ${err.message}`);
+      terminalOutputRef.current += `❌ Connection error: ${err.message}\n`;
       setIsRunning(false);
+      setTerminalOutput(terminalOutputRef.current);
     });
   };
 
@@ -257,13 +363,13 @@ const StudentPortal = () => {
     if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit("kill");
       if (terminalInstance.current) {
-        terminalInstance.current.writeln("[31m⏹ Program killed by user.[0m");
+        terminalInstance.current.writeln("⏹ Program killed by user.");
       }
     }
     setIsRunning(false);
   };
 
-  // Submit code with AUTO-GRADING
+  // Submit code with AUTO-GRADING + terminal output
   const handleSubmit = async () => {
     if (!selectedQuestion) return;
     setIsSubmitting(true);
@@ -275,18 +381,37 @@ const StudentPortal = () => {
         question_id: selectedQuestion.id,
         code,
         language,
+        terminal_output: terminalOutputRef.current || terminalOutput,
       });
+
       setTestResults(res.data);
       setOutput(
         `Score: ${res.data.score}/${res.data.totalPoints}\nPassed: ${res.data.totalPassed}/${res.data.totalTests} tests`,
       );
-      fetchSubmissions(selectedQuestion.id);
-      fetchProgress();
+
+      // IMMEDIATE STATE UPDATE
+      setIsSubmitted(true);
+      setIsEditing(false);
+
+      // Refresh all related data
+      await Promise.all([
+        fetchSubmissions(selectedQuestion.id),
+        fetchProgress(),
+        fetchSubmissionStatus(),
+      ]);
     } catch (err) {
       setOutput(err.response?.data?.error || "Submission failed");
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // NEW: Enable editing after submission
+  const handleEdit = () => {
+    setIsEditing(true);
+    setIsSubmitted(false);
+    setOutput("");
+    setTestResults(null);
   };
 
   const handleSaveDraft = async () => {
@@ -316,6 +441,16 @@ const StudentPortal = () => {
     { id: "java", name: "Java", icon: "☕" },
   ];
 
+  const getMonacoLanguage = (lang) => {
+    const map = {
+      c: "c",
+      cpp: "cpp",
+      python: "python",
+      java: "java",
+    };
+    return map[lang] || "plaintext";
+  };
+
   return (
     <div
       className={`min-h-screen ${darkMode ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-900"}`}
@@ -339,224 +474,288 @@ const StudentPortal = () => {
           </div>
           <button
             onClick={() => setDarkMode(!darkMode)}
-            className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+            className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            title="Toggle Dark Mode"
           >
             {darkMode ? "☀️" : "🌙"}
           </button>
           <button
             onClick={handleLogout}
-            className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+            className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
           >
             Logout
           </button>
         </div>
       </header>
 
-      <div className="flex h-[calc(100vh-80px)]">
-        {/* Left: Plagiarism & History Panel */}
-        <div
-          className={`w-72 ${darkMode ? "bg-gray-800" : "bg-white"} border-r p-4 overflow-y-auto`}
-        >
-          <h3 className="font-bold mb-4">🔍 Plagiarism Check</h3>
-          {plagiarismMatches.length === 0 ? (
-            <div className="text-green-500 text-sm">
-              ✅ No plagiarism detected
-              <br />
-              <span className="text-gray-500">Threshold: 85% similarity</span>
-            </div>
-          ) : (
-            <div className="text-red-500">
-              ⚠️ {plagiarismMatches.length} match(es) found!
-              {plagiarismMatches.map((match) => (
-                <div
-                  key={match.student_id}
-                  className="mt-2 p-2 bg-red-50 rounded"
-                >
-                  <div className="font-semibold">{match.name}</div>
-                  <div>{match.similarity}% similar</div>
-                </div>
-              ))}
-            </div>
-          )}
+      {/* Language Selection */}
+      <div className={`${darkMode ? "bg-gray-800" : "bg-white"} px-6 py-3 shadow-sm`}>
+        <div className="flex gap-3">
+          {languages.map((lang) => (
+            <button
+              key={lang.id}
+              onClick={() => setLanguage(lang.id)}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                language === lang.id
+                  ? "bg-blue-500 text-white shadow-md"
+                  : darkMode
+                  ? "bg-gray-700 hover:bg-gray-600"
+                  : "bg-gray-100 hover:bg-gray-200"
+              }`}
+            >
+              <span className="mr-2">{lang.icon}</span>
+              {lang.name}
+            </button>
+          ))}
+        </div>
+      </div>
 
-          {submissions.length > 0 && (
-            <div className="mt-6">
-              <h3 className="font-bold mb-3">📜 History</h3>
-              {submissions.slice(0, 5).map((sub, i) => (
-                <div
-                  key={sub.id}
-                  className={`p-3 rounded-lg mb-2 ${darkMode ? "bg-gray-700" : "bg-gray-100"}`}
+      {/* Main Content */}
+      <div className="flex h-[calc(100vh-140px)]">
+        {/* Left Sidebar - Questions */}
+        <div
+          className={`w-80 ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-r overflow-y-auto p-4`}
+        >
+          <h2 className="text-lg font-bold mb-4">📋 Questions</h2>
+          <div className="space-y-3">
+            {questions.map((q) => {
+              const isQSubmitted = submissionStatus[q.id] === "submitted";
+              return (
+                <button
+                  key={q.id}
+                  onClick={() => handleQuestionSelect(q)}
+                  className={`w-full text-left p-4 rounded-lg border transition-all ${
+                    selectedQuestion?.id === q.id
+                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                      : darkMode
+                      ? "border-gray-700 hover:bg-gray-700"
+                      : "border-gray-200 hover:bg-gray-50"
+                  }`}
                 >
-                  <div className="text-sm font-semibold">
-                    Attempt #{submissions.length - i}
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">{q.title}</span>
+                    {isQSubmitted && (
+                      <span className="text-green-500 text-lg" title="Submitted">✅</span>
+                    )}
                   </div>
-                  <div
-                    className={`text-sm ${(sub.score || 0) > 0 ? "text-green-500" : "text-red-500"}`}
+                  <div className="text-sm text-gray-500 mt-1">
+                    {q.points} points • {q.language.toUpperCase()}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Plagiarism Section */}
+          {plagiarismMatches.length > 0 && (
+            <div className="mt-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <h3 className="text-red-600 dark:text-red-400 font-bold mb-2">
+                ⚠️ Plagiarism Alert
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                Similar code detected:
+              </p>
+              <ul className="space-y-2">
+                {plagiarismMatches.map((match, idx) => (
+                  <li
+                    key={idx}
+                    className="text-sm p-2 bg-white dark:bg-gray-800 rounded border"
                   >
-                    Score: {sub.score || 0}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {new Date(sub.submitted_at).toLocaleDateString()}
-                  </div>
-                </div>
-              ))}
+                    <span className="font-semibold">{match.name}</span>
+                    <span className="text-red-500 ml-2">
+                      {match.similarity}% match
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>
 
-        {/* Center: Code Editor + Terminal */}
+        {/* Center - Code Editor */}
         <div className="flex-1 flex flex-col">
-          {/* Top Bar */}
+          {/* Paste Warning Banner */}
+          {pasteWarning && (
+            <div className="bg-red-500 text-white px-4 py-2 text-center font-semibold animate-pulse z-50">
+              🚫 Copy-paste is disabled! Please type your code manually.
+            </div>
+          )}
+
+          {/* Editor Header */}
           <div
-            className={`${darkMode ? "bg-gray-800" : "bg-white"} border-b px-4 py-3 flex justify-between items-center`}
+            className={`${darkMode ? "bg-gray-800" : "bg-gray-100"} px-4 py-2 flex justify-between items-center`}
           >
-            <div className="flex items-center gap-4">
-              <select
-                value={language}
-                onChange={(e) => {
-                  setLanguage(e.target.value);
-                  setSelectedQuestion(null);
-                  setCode("");
-                }}
-                className={`px-3 py-2 rounded-lg border ${darkMode ? "bg-gray-700 border-gray-600" : "bg-white border-gray-300"}`}
-              >
-                {languages.map((lang) => (
-                  <option key={lang.id} value={lang.id}>
-                    {lang.icon} {lang.name}
-                  </option>
-                ))}
-              </select>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">
+                {selectedQuestion ? selectedQuestion.title : "Select a question"}
+              </span>
               {selectedQuestion && (
-                <div>
-                  <span className="font-bold">{selectedQuestion.title}</span>
-                  <span className="ml-2 text-sm text-gray-500">
-                    {selectedQuestion.points} pts
-                  </span>
-                </div>
+                <span className="text-sm text-gray-500">
+                  ({selectedQuestion.language.toUpperCase()})
+                </span>
+              )}
+              {isSubmitted && !isEditing && (
+                <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold">
+                  ✅ SUBMITTED
+                </span>
+              )}
+              {isEditing && (
+                <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-xs font-bold">
+                  ✏️ EDITING
+                </span>
               )}
             </div>
             <div className="flex gap-2">
               <button
                 onClick={handleSaveDraft}
-                className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition"
+                disabled={!selectedQuestion}
+                className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 disabled:opacity-50 text-sm"
               >
                 💾 Save Draft
               </button>
-              {isRunning ? (
+              <button
+                onClick={handleRunCode}
+                disabled={!selectedQuestion || isRunning}
+                className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50 text-sm"
+              >
+                {isRunning ? "⏳ Running..." : "▶️ Run Code"}
+              </button>
+              {isRunning && (
                 <button
                   onClick={handleKillProgram}
-                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+                  className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
                 >
-                  ⏹ Stop Program
+                  ⏹ Stop
+                </button>
+              )}
+
+              {/* Submit / Submitted / Edit buttons */}
+              {!isSubmitted ? (
+                <button
+                  onClick={handleSubmit}
+                  disabled={!selectedQuestion || isSubmitting}
+                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
+                >
+                  {isSubmitting ? "⏳ Submitting..." : "📤 Submit"}
+                </button>
+              ) : !isEditing ? (
+                <button
+                  onClick={handleEdit}
+                  className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
+                >
+                  ✏️ Edit
                 </button>
               ) : (
                 <button
-                  onClick={handleRunCode}
-                  disabled={!terminalReady}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition disabled:opacity-50"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
                 >
-                  ▶️ Run Code
+                  {isSubmitting ? "⏳ Submitting..." : "📤 Re-Submit"}
                 </button>
               )}
-              <button
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition disabled:opacity-50"
-              >
-                {isSubmitting ? "⏳ Submitting..." : "✅ Submit"}
-              </button>
             </div>
           </div>
 
-          {/* Question Info - REMOVED time limit and memory display */}
-          {selectedQuestion && (
-            <div
-              className={`px-4 py-3 ${darkMode ? "bg-gray-800" : "bg-blue-50"} border-b`}
-            >
-              <p className="text-sm">{selectedQuestion.description}</p>
-            </div>
-          )}
-
-          {/* Monaco Editor */}
-          <div className="flex-1">
+          {/* Monaco Editor with Paste Prevention */}
+          <div
+            className="flex-1 relative"
+            onPaste={handleContainerPaste}
+          >
             <Editor
               height="100%"
-              language={language === "cpp" ? "cpp" : language}
+              language={getMonacoLanguage(language)}
               value={code}
               onChange={(value) => setCode(value || "")}
+              onMount={handleEditorDidMount}
               theme={darkMode ? "vs-dark" : "light"}
               options={{
                 minimap: { enabled: false },
                 fontSize: 14,
-                wordWrap: "on",
+                lineNumbers: "on",
+                roundedSelection: false,
+                scrollBeyondLastLine: false,
+                readOnly: !selectedQuestion || (isSubmitted && !isEditing),
                 automaticLayout: true,
-                readOnly: false,
+                contextmenu: false,
               }}
             />
           </div>
 
-          {/* Interactive Terminal (xterm.js) */}
+          {/* Terminal Output */}
           <div
-            className="border-t border-gray-700"
-            style={{
-              height: "280px",
-              minHeight: "200px",
-              position: "relative",
-            }}
+            className={`h-48 ${darkMode ? "bg-gray-900" : "bg-gray-100"} border-t`}
           >
-            <div className="bg-gray-900 px-3 py-1 flex items-center justify-between">
-              <span className="text-green-400 text-xs font-mono">
-                ● Interactive Terminal
-              </span>
-              <span className="text-gray-500 text-xs">
-                {isRunning
-                  ? "🟢 Program Running — Type input directly here"
-                  : "⏸ Ready"}
-              </span>
+            <div className="px-4 py-2 text-sm font-semibold text-gray-500 flex justify-between">
+              <span>Terminal Output</span>
+              {output && <span className="text-xs">{output}</span>}
             </div>
-            <div
-              ref={terminalRef}
-              style={{
-                position: "absolute",
-                top: "24px",
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: "#1e1e1e",
-              }}
-            />
+            <div ref={terminalRef} className="h-full w-full px-4 pb-4" />
           </div>
         </div>
 
-        {/* Right: Question Panel */}
+        {/* Right Sidebar - Submissions & Info */}
         <div
-          className={`w-80 ${darkMode ? "bg-gray-800" : "bg-white"} border-l p-4 overflow-y-auto`}
+          className={`w-72 ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-l overflow-y-auto p-4`}
         >
-          <h3 className="font-bold mb-4">📋 Questions</h3>
-          {questions.map((q) => (
-            <div
-              key={q.id}
-              onClick={() => handleQuestionSelect(q)}
-              className={`p-4 rounded-xl cursor-pointer transition-all mb-3 ${
-                selectedQuestion?.id === q.id
-                  ? "bg-blue-50 border-2 border-blue-500 shadow-md"
-                  : darkMode
-                    ? "bg-gray-700 hover:bg-gray-600 border-2 border-transparent"
-                    : "bg-gray-50 hover:bg-gray-100 border-2 border-transparent"
-              }`}
-            >
-              <div className="flex justify-between items-start mb-1">
-                <span className="text-xs font-semibold text-blue-500 uppercase">
-                  {q.language.toUpperCase()}
-                </span>
-                <span className="text-xs text-gray-500">{q.points} pts</span>
-              </div>
-              <h4 className="font-semibold text-sm">{q.title}</h4>
-              <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                {q.description}
-              </p>
+          <h2 className="text-lg font-bold mb-4">📊 Progress</h2>
+          <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+              {progress.solved_count}/{progress.total_questions}
             </div>
-          ))}
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              Questions Solved
+            </div>
+            <div className="mt-2 text-lg font-semibold">
+              {progress.total_score} points
+            </div>
+          </div>
+
+          {submissions.length > 0 && (
+            <>
+              <h2 className="text-lg font-bold mb-4">📝 Submissions</h2>
+              <div className="space-y-2">
+                {submissions.slice(0, 5).map((sub, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-3 rounded-lg border text-sm ${
+                      sub.status === "submitted"
+                        ? "bg-green-50 dark:bg-green-900/20 border-green-200"
+                        : "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200"
+                    }`}
+                  >
+                    <div className="font-semibold">
+                      {sub.status === "submitted" ? "✅ Submitted" : "📝 Draft"}
+                    </div>
+                    <div className="text-gray-500">
+                      Score: {sub.score || 0}/
+                      {sub.total_points || selectedQuestion?.points || 10}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {new Date(sub.submitted_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {testResults && (
+            <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 rounded-lg">
+              <h3 className="font-bold text-purple-600 dark:text-purple-400 mb-2">
+                🧪 Test Results
+              </h3>
+              <div className="text-sm">
+                <div>
+                  Passed: {testResults.totalPassed}/{testResults.totalTests}
+                </div>
+                <div>
+                  Score: {testResults.score}/{testResults.totalPoints}
+                </div>
+                <div>Time: {testResults.executionTimeMs}ms</div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

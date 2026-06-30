@@ -1,7 +1,6 @@
 -- ============================================
 -- CODING PLATFORM DATABASE SCHEMA
--- Optimized with indexes, audit fields, test results
--- NOW WITH FILE-BASED TEST CASE SUPPORT
+-- Updated with terminal_output support
 -- ============================================
 
 DROP TABLE IF EXISTS test_results CASCADE;
@@ -49,7 +48,7 @@ CREATE INDEX idx_questions_language ON questions(language);
 CREATE INDEX idx_questions_active ON questions(is_active);
 
 -- ============================================
--- SUBMISSIONS TABLE
+-- SUBMISSIONS TABLE (Updated with terminal_output)
 -- ============================================
 CREATE TABLE submissions (
     id SERIAL PRIMARY KEY,
@@ -58,6 +57,7 @@ CREATE TABLE submissions (
     code TEXT NOT NULL,
     language VARCHAR(10) NOT NULL,
     output TEXT,
+    terminal_output TEXT,  -- NEW: Stores student's actual terminal session output
     status VARCHAR(20) CHECK (status IN ('draft', 'submitted', 'graded')),
     score INTEGER DEFAULT 0,
     execution_time_ms INTEGER,
@@ -84,7 +84,7 @@ CREATE TABLE test_results (
     actual_output TEXT,
     passed BOOLEAN NOT NULL,
     execution_time_ms INTEGER,
-    file_results JSONB DEFAULT NULL,  -- NEW: stores file-based test results
+    file_results JSONB DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -118,6 +118,7 @@ INSERT INTO users (login_id, password_hash, name, role) VALUES
 
 -- ============================================
 -- STUDENTS (30 real students - ALL with REAL bcrypt hashes)
+-- Password: Student@123
 -- ============================================
 INSERT INTO users (login_id, password_hash, name, role) VALUES
 ('alisha.suwal', '$2b$12$AuChfZAM9HW4Sgw2gopyrOX5RLf5pPRO83xjtMgqqqDWWNa8kWlR2', 'Alisha Suwal', 'student');
@@ -181,7 +182,7 @@ INSERT INTO users (login_id, password_hash, name, role) VALUES
 ('yoban.sahi', '$2b$12$P3GKcnZrZOtDuPsqLd4UXOsb8RfBq2M8a1HxAh28s/Q7scECCQLNu', 'Yoban sahi', 'student');
 
 -- ============================================
--- SAMPLE QUESTIONS - STDOUT-BASED (Original)
+-- SAMPLE QUESTIONS - STDOUT-BASED
 -- ============================================
 
 -- 1. Hello World (C)

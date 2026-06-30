@@ -15,6 +15,7 @@ const TeacherDashboard = () => {
   const [questions, setQuestions] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [studentSubmissions, setStudentSubmissions] = useState([]);
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [activeTab, setActiveTab] = useState("all");
   const [loading, setLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
@@ -68,6 +69,7 @@ const TeacherDashboard = () => {
 
   const handleStudentClick = (student) => {
     setSelectedStudent(student);
+    setSelectedSubmission(null);
     fetchStudentSubmissions(student.id);
   };
 
@@ -119,281 +121,227 @@ const TeacherDashboard = () => {
         <div className="flex items-center gap-4">
           <button
             onClick={() => setDarkMode(!darkMode)}
-            className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+            className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           >
             {darkMode ? "☀️" : "🌙"}
           </button>
           <button
             onClick={handleLogout}
-            className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+            className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
           >
             Logout
           </button>
         </div>
       </header>
 
-      <div className="p-6">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
-          <div
-            className={`p-4 rounded-xl ${darkMode ? "bg-gray-800" : "bg-white"} shadow-md`}
-          >
-            <div className="text-2xl mb-1">👥</div>
-            <div className="text-sm text-gray-500">Total Students</div>
-            <div className="text-2xl font-bold">{totalStudents}</div>
-          </div>
-          <div
-            className={`p-4 rounded-xl ${darkMode ? "bg-gray-800" : "bg-white"} shadow-md`}
-          >
-            <div className="text-2xl mb-1">✅</div>
-            <div className="text-sm text-gray-500">Completed</div>
-            <div className="text-2xl font-bold text-green-500">
-              {students.completed.length}
-            </div>
-          </div>
-          <div
-            className={`p-4 rounded-xl ${darkMode ? "bg-gray-800" : "bg-white"} shadow-md`}
-          >
-            <div className="text-2xl mb-1">⏳</div>
-            <div className="text-sm text-gray-500">Pending</div>
-            <div className="text-2xl font-bold text-yellow-500">
-              {students.pending.length}
-            </div>
-          </div>
-          <div
-            className={`p-4 rounded-xl ${darkMode ? "bg-gray-800" : "bg-white"} shadow-md`}
-          >
-            <div className="text-2xl mb-1">📊</div>
-            <div className="text-sm text-gray-500">Completion Rate</div>
-            <div className="text-2xl font-bold text-blue-500">
-              {completionRate}%
-            </div>
-          </div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-4 gap-4 p-6">
+        <div className={`${darkMode ? "bg-gray-800" : "bg-white"} p-4 rounded-lg shadow`}>
+          <div className="text-2xl font-bold">{totalStudents}</div>
+          <div className="text-sm text-gray-500">Total Students</div>
         </div>
-
-        {/* Tabs */}
-        <div className="flex gap-2 mb-4">
-          {["all", "completed", "pending"].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-lg capitalize transition ${
-                activeTab === tab
-                  ? "bg-blue-500 text-white"
-                  : darkMode
-                    ? "bg-gray-700 hover:bg-gray-600"
-                    : "bg-white hover:bg-gray-100"
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+        <div className={`${darkMode ? "bg-gray-800" : "bg-white"} p-4 rounded-lg shadow`}>
+          <div className="text-2xl font-bold text-green-600">{students.completed.length}</div>
+          <div className="text-sm text-gray-500">Completed</div>
         </div>
-
-        {/* Students Table */}
-        <div
-          className={`rounded-xl overflow-hidden shadow-md ${darkMode ? "bg-gray-800" : "bg-white"}`}
-        >
-          {loading ? (
-            <div className="p-8 text-center text-gray-500">
-              Loading students...
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead className={`${darkMode ? "bg-gray-700" : "bg-gray-100"}`}>
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">
-                    Student
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">
-                    Login ID
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">
-                    Progress
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">
-                    Submissions
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">
-                    Action
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayList.map((student) => {
-                  const progress =
-                    student.total_questions > 0
-                      ? (student.attempted_count / student.total_questions) *
-                        100
-                      : 0;
-                  return (
-                    <tr
-                      key={student.id}
-                      className={`border-t ${darkMode ? "border-gray-700" : "border-gray-200"} hover:bg-gray-50 dark:hover:bg-gray-700`}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold">
-                            {student.name.charAt(0)}
-                          </div>
-                          <span className="font-medium">{student.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {student.login_id}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
-                          <div
-                            className={`h-2 rounded-full ${progress >= 50 ? "bg-blue-500" : "bg-yellow-500"}`}
-                            style={{ width: `${progress}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-gray-500">
-                          {student.attempted_count}/{student.total_questions}
-                        </span>
-                      </td>
-                      {/* NEW: Show number of submissions */}
-                      <td className="px-4 py-3">
-                        <span
-                          className={`text-sm font-semibold ${student.attempted_count > 0 ? "text-blue-600" : "text-gray-400"}`}
-                        >
-                          {student.attempted_count} work
-                          {student.attempted_count !== 1 ? "s" : ""} submitted
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`text-xs font-bold px-2 py-1 rounded-full ${
-                            student.status === "completed"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-yellow-100 text-yellow-700"
-                          }`}
-                        >
-                          {student.status === "completed"
-                            ? "✅ COMPLETED"
-                            : "⏳ PENDING"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => handleStudentClick(student)}
-                          className="text-blue-500 hover:text-blue-700 text-sm font-medium"
-                        >
-                          View Submissions →
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-
-          {displayList.length === 0 && !loading && (
-            <div className="p-8 text-center text-gray-500">
-              <div className="text-4xl mb-2">🎉</div>
-              <p>
-                {activeTab === "pending"
-                  ? "All students have completed!"
-                  : "No completed submissions yet"}
-              </p>
-            </div>
-          )}
+        <div className={`${darkMode ? "bg-gray-800" : "bg-white"} p-4 rounded-lg shadow`}>
+          <div className="text-2xl font-bold text-yellow-600">{students.pending.length}</div>
+          <div className="text-sm text-gray-500">Pending</div>
         </div>
+        <div className={`${darkMode ? "bg-gray-800" : "bg-white"} p-4 rounded-lg shadow`}>
+          <div className="text-2xl font-bold text-blue-600">{completionRate}%</div>
+          <div className="text-sm text-gray-500">Completion Rate</div>
+        </div>
+      </div>
 
-        {/* Student Submissions Modal */}
-        {selectedStudent && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div
-              className={`${darkMode ? "bg-gray-800" : "bg-white"} rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto`}
-            >
-              {/* Modal Header */}
-              <div className="px-6 py-4 border-b flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center text-lg font-bold">
-                    {selectedStudent.name.charAt(0)}
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold">
-                      {selectedStudent.name}
-                    </h2>
-                    <p className="text-sm text-gray-500">
-                      {selectedStudent.login_id}
-                    </p>
-                  </div>
-                </div>
+      {/* Main Content */}
+      <div className="flex px-6 pb-6 gap-6 h-[calc(100vh-280px)]">
+        {/* Students List */}
+        <div className={`w-1/3 ${darkMode ? "bg-gray-800" : "bg-white"} rounded-lg shadow overflow-hidden flex flex-col`}>
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex gap-2 mb-3">
+              {["all", "completed", "pending"].map((tab) => (
                 <button
-                  onClick={() => setSelectedStudent(null)}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-3 py-1 rounded text-sm capitalize ${
+                    activeTab === tab
+                      ? "bg-blue-500 text-white"
+                      : darkMode
+                      ? "bg-gray-700 hover:bg-gray-600"
+                      : "bg-gray-100 hover:bg-gray-200"
+                  }`}
                 >
-                  ×
+                  {tab}
                 </button>
-              </div>
-
-              {/* Modal Content */}
-              <div className="p-6">
-                {studentSubmissions.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <div className="text-4xl mb-2">📝</div>
-                    <p className="font-semibold">No submissions yet</p>
-                    <p className="text-sm">
-                      This student hasn't submitted any code.
-                    </p>
+              ))}
+            </div>
+            <h2 className="text-lg font-bold">Students</h2>
+          </div>
+          <div className="overflow-y-auto flex-1 p-2">
+            {loading ? (
+              <div className="text-center py-4">Loading...</div>
+            ) : (
+              displayList.map((student) => (
+                <button
+                  key={student.id}
+                  onClick={() => handleStudentClick(student)}
+                  className={`w-full text-left p-3 rounded-lg mb-2 transition-all ${
+                    selectedStudent?.id === student.id
+                      ? "bg-blue-50 dark:bg-blue-900/20 border-blue-500"
+                      : darkMode
+                      ? "hover:bg-gray-700"
+                      : "hover:bg-gray-50"
+                  } border`}
+                >
+                  <div className="font-semibold">{student.name}</div>
+                  <div className="text-sm text-gray-500">
+                    {student.attempted_count}/{student.total_questions} solved
                   </div>
+                  <div className="text-xs text-gray-400">
+                    Score: {student.total_score} | Avg: {student.average_score.toFixed(1)}
+                  </div>
+                  <div className="mt-1">
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded ${
+                        student.status === "completed"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-yellow-100 text-yellow-700"
+                      }`}
+                    >
+                      {student.status === "completed" ? "✅ Completed" : "⏳ Pending"}
+                    </span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Student Details & Submissions */}
+        <div className={`flex-1 ${darkMode ? "bg-gray-800" : "bg-white"} rounded-lg shadow overflow-hidden flex flex-col`}>
+          {selectedStudent ? (
+            <>
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 className="text-lg font-bold">{selectedStudent.name}</h2>
+                <p className="text-sm text-gray-500">
+                  {selectedStudent.attempted_count}/{selectedStudent.total_questions} questions solved
+                </p>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <h3 className="font-bold mb-3">Submissions</h3>
+                {studentSubmissions.length === 0 ? (
+                  <p className="text-gray-500">No submissions yet</p>
                 ) : (
-                  <div className="space-y-4">
-                    {studentSubmissions.map((sub, index) => (
+                  <div className="space-y-3">
+                    {studentSubmissions.map((sub, idx) => (
                       <div
-                        key={sub.id}
-                        className={`p-4 rounded-lg border ${darkMode ? "bg-gray-700 border-gray-600" : "bg-gray-50 border-gray-200"}`}
+                        key={idx}
+                        className={`p-4 rounded-lg border cursor-pointer transition-all ${
+                          selectedSubmission?.id === sub.id
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                            : darkMode
+                            ? "border-gray-700 hover:bg-gray-700"
+                            : "border-gray-200 hover:bg-gray-50"
+                        }`}
+                        onClick={() => setSelectedSubmission(sub)}
                       >
-                        <div className="flex justify-between items-start mb-2">
+                        <div className="flex justify-between items-start">
                           <div>
-                            <span className="text-xs font-bold text-blue-500 uppercase">
-                              {sub.language.toUpperCase()}
-                            </span>
-                            <h4 className="font-semibold">
-                              {sub.questionTitle ||
-                                `Question ${sub.question_id}`}
-                            </h4>
+                            <div className="font-semibold">{sub.question_title}</div>
+                            <div className="text-sm text-gray-500">
+                              Score: {sub.score}/{sub.total_points || 10}
+                            </div>
                           </div>
                           <span
-                            className={`text-sm font-bold ${sub.score > 0 ? "text-green-500" : "text-red-500"}`}
+                            className={`text-xs px-2 py-0.5 rounded ${
+                              sub.status === "submitted"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-yellow-100 text-yellow-700"
+                            }`}
                           >
-                            Score: {sub.score || 0}
+                            {sub.status}
                           </span>
                         </div>
-                        <p className="text-xs text-gray-500 mb-2">
-                          Submitted:{" "}
+                        <div className="text-xs text-gray-400 mt-1">
                           {new Date(sub.submitted_at).toLocaleString()}
-                        </p>
-                        <div
-                          className={`p-3 rounded bg-gray-900 text-gray-300 font-mono text-sm overflow-x-auto`}
-                        >
-                          <pre>{sub.code}</pre>
                         </div>
-                        {sub.output && (
-                          <div className="mt-2">
-                            <div className="text-xs text-gray-500 mb-1">
-                              Output
-                            </div>
-                            <div className="p-2 rounded bg-gray-800 text-gray-300 font-mono text-xs">
-                              <pre>{sub.output}</pre>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     ))}
                   </div>
                 )}
+
+                {/* Selected Submission Details with Terminal Output */}
+                {selectedSubmission && (
+                  <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-900 rounded-lg">
+                    <h3 className="font-bold mb-3">📟 Student's Terminal Output</h3>
+
+                    {/* Terminal Output Display */}
+                    {selectedSubmission.terminal_output ? (
+                      <div className="mb-4">
+                        <div className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                          What the student saw in their terminal:
+                        </div>
+                        <pre className="bg-black text-green-400 p-4 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap max-h-64 overflow-y-auto">
+                          {selectedSubmission.terminal_output}
+                        </pre>
+                      </div>
+                    ) : (
+                      <div className="mb-4 text-gray-500 text-sm">
+                        No terminal output recorded (student may have submitted without running)
+                      </div>
+                    )}
+
+                    {/* Code View */}
+                    <div className="mb-4">
+                      <div className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                        Submitted Code:
+                      </div>
+                      <pre className="bg-gray-800 text-gray-200 p-4 rounded-lg overflow-x-auto text-sm font-mono max-h-64 overflow-y-auto">
+                        {selectedSubmission.code}
+                      </pre>
+                    </div>
+
+                    {/* Test Results */}
+                    {selectedSubmission.test_results && (
+                      <div>
+                        <div className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                          Auto-Grading Results:
+                        </div>
+                        <div className="space-y-2">
+                          {selectedSubmission.test_results.map((test, tidx) => (
+                            <div
+                              key={tidx}
+                              className={`p-2 rounded text-sm ${
+                                test.passed
+                                  ? "bg-green-100 dark:bg-green-900/30 text-green-700"
+                                  : "bg-red-100 dark:bg-red-900/30 text-red-700"
+                              }`}
+                            >
+                              <div className="font-semibold">
+                                Test {test.test_case_index + 1}: {test.passed ? "✅ Passed" : "❌ Failed"}
+                              </div>
+                              <div className="text-xs mt-1">
+                                Expected: {test.expected_output?.substring(0, 100)}
+                              </div>
+                              <div className="text-xs">
+                                Got: {test.actual_output?.substring(0, 100)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-500">
+              Select a student to view their submissions
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
