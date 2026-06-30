@@ -19,16 +19,29 @@ const createRateLimiter = (options = {}) => {
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests,
-    // Key by user ID if authenticated, otherwise by IP
+    // FIX: Use x-forwarded-for for IP behind proxies, fallback to req.ip
     keyGenerator: (req) => {
+      // Try to get user ID from token if already decoded
       if (req.user && req.user.userId) {
         return `user:${req.user.userId}`;
       }
-      return `ip:${req.ip}`;
+      // Fallback to IP with proxy support
+      const clientIp =
+        req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+        req.ip ||
+        req.connection?.remoteAddress ||
+        "unknown";
+      return `ip:${clientIp}`;
     },
-    // Skip rate limiting for teachers (they need more access)
+    // FIX: Don't skip teachers blindly - req.user might not be set yet
+    // Instead, skip based on path or use a higher limit
     skip: (req) => {
-      return req.user && req.user.role === "teacher";
+      // If user is already decoded (e.g., in routes after verifyToken), skip teachers
+      if (req.user && req.user.role === "teacher") {
+        return true;
+      }
+      // Don't skip otherwise - let the limit apply
+      return false;
     },
     handler: (req, res) => {
       res.status(429).json({
@@ -40,23 +53,23 @@ const createRateLimiter = (options = {}) => {
   });
 };
 
-// General API rate limiter
+// General API rate limiter - INCREASED LIMIT for development
 const apiLimiter = createRateLimiter({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
+  max: parseInt(process.env.RATE_LIMIT_MAX) || 200, // Increased from 100
 });
 
 // Stricter limit for code execution (expensive operation)
 const codeExecutionLimiter = createRateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  max: 10, // 10 code runs per minute
+  max: 10,
   message: "Code execution limit reached. Please wait before running again.",
 });
 
 // Stricter limit for submissions
 const submissionLimiter = createRateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  max: 5, // 5 submissions per minute
+  max: 5,
   message: "Submission limit reached. Please wait before submitting again.",
 });
 

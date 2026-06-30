@@ -35,6 +35,7 @@ const TeacherDashboard = () => {
       setStudents(res.data);
     } catch (err) {
       console.error("Failed to fetch students", err);
+      setStudents({ students: [], completed: [], pending: [] });
     } finally {
       setLoading(false);
     }
@@ -46,6 +47,7 @@ const TeacherDashboard = () => {
       setAnalytics(res.data);
     } catch (err) {
       console.error("Failed to fetch analytics", err);
+      setAnalytics({ class: {}, questions: [], recentActivity: [] });
     }
   };
 
@@ -55,6 +57,7 @@ const TeacherDashboard = () => {
       setQuestions(res.data);
     } catch (err) {
       console.error("Failed to fetch questions", err);
+      setQuestions([]);
     }
   };
 
@@ -64,6 +67,7 @@ const TeacherDashboard = () => {
       setStudentSubmissions(res.data);
     } catch (err) {
       console.error("Failed to fetch submissions", err);
+      setStudentSubmissions([]);
     }
   };
 
@@ -90,24 +94,25 @@ const TeacherDashboard = () => {
     window.location.href = "/login";
   };
 
-  const totalStudents = students.students.length;
+  // FIX: Safe access with optional chaining
+  const totalStudents = students?.students?.length || 0;
+  const completedCount = students?.completed?.length || 0;
+  const pendingCount = students?.pending?.length || 0;
+
   const completionRate =
-    totalStudents > 0
-      ? Math.round((students.completed.length / totalStudents) * 100)
-      : 0;
+    totalStudents > 0 ? Math.round((completedCount / totalStudents) * 100) : 0;
 
   const displayList =
     activeTab === "all"
-      ? students.students
+      ? students?.students || []
       : activeTab === "completed"
-        ? students.completed
-        : students.pending;
+        ? students?.completed || []
+        : students?.pending || [];
 
   return (
     <div
       className={`min-h-screen ${darkMode ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-900"}`}
     >
-      {/* Header */}
       <header
         className={`${darkMode ? "bg-gray-800" : "bg-white"} shadow-md px-6 py-4 flex justify-between items-center`}
       >
@@ -134,43 +139,50 @@ const TeacherDashboard = () => {
         </div>
       </header>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-4 gap-4 p-6">
-        <div className={`${darkMode ? "bg-gray-800" : "bg-white"} p-4 rounded-lg shadow`}>
+        <div
+          className={`${darkMode ? "bg-gray-800" : "bg-white"} p-4 rounded-lg shadow`}
+        >
           <div className="text-2xl font-bold">{totalStudents}</div>
           <div className="text-sm text-gray-500">Total Students</div>
         </div>
-        <div className={`${darkMode ? "bg-gray-800" : "bg-white"} p-4 rounded-lg shadow`}>
-          <div className="text-2xl font-bold text-green-600">{students.completed.length}</div>
+        <div
+          className={`${darkMode ? "bg-gray-800" : "bg-white"} p-4 rounded-lg shadow`}
+        >
+          <div className="text-2xl font-bold text-green-600">
+            {completedCount}
+          </div>
           <div className="text-sm text-gray-500">Completed</div>
         </div>
-        <div className={`${darkMode ? "bg-gray-800" : "bg-white"} p-4 rounded-lg shadow`}>
-          <div className="text-2xl font-bold text-yellow-600">{students.pending.length}</div>
+        <div
+          className={`${darkMode ? "bg-gray-800" : "bg-white"} p-4 rounded-lg shadow`}
+        >
+          <div className="text-2xl font-bold text-yellow-600">
+            {pendingCount}
+          </div>
           <div className="text-sm text-gray-500">Pending</div>
         </div>
-        <div className={`${darkMode ? "bg-gray-800" : "bg-white"} p-4 rounded-lg shadow`}>
-          <div className="text-2xl font-bold text-blue-600">{completionRate}%</div>
+        <div
+          className={`${darkMode ? "bg-gray-800" : "bg-white"} p-4 rounded-lg shadow`}
+        >
+          <div className="text-2xl font-bold text-blue-600">
+            {completionRate}%
+          </div>
           <div className="text-sm text-gray-500">Completion Rate</div>
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="flex px-6 pb-6 gap-6 h-[calc(100vh-280px)]">
-        {/* Students List */}
-        <div className={`w-1/3 ${darkMode ? "bg-gray-800" : "bg-white"} rounded-lg shadow overflow-hidden flex flex-col`}>
+        <div
+          className={`w-1/3 ${darkMode ? "bg-gray-800" : "bg-white"} rounded-lg shadow overflow-hidden flex flex-col`}
+        >
           <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex gap-2 mb-3">
               {["all", "completed", "pending"].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-3 py-1 rounded text-sm capitalize ${
-                    activeTab === tab
-                      ? "bg-blue-500 text-white"
-                      : darkMode
-                      ? "bg-gray-700 hover:bg-gray-600"
-                      : "bg-gray-100 hover:bg-gray-200"
-                  }`}
+                  className={`px-3 py-1 rounded text-sm capitalize ${activeTab === tab ? "bg-blue-500 text-white" : darkMode ? "bg-gray-700 hover:bg-gray-600" : "bg-gray-100 hover:bg-gray-200"}`}
                 >
                   {tab}
                 </button>
@@ -186,30 +198,26 @@ const TeacherDashboard = () => {
                 <button
                   key={student.id}
                   onClick={() => handleStudentClick(student)}
-                  className={`w-full text-left p-3 rounded-lg mb-2 transition-all ${
-                    selectedStudent?.id === student.id
-                      ? "bg-blue-50 dark:bg-blue-900/20 border-blue-500"
-                      : darkMode
-                      ? "hover:bg-gray-700"
-                      : "hover:bg-gray-50"
-                  } border`}
+                  className={`w-full text-left p-3 rounded-lg mb-2 transition-all border ${selectedStudent?.id === student.id ? "bg-blue-50 dark:bg-blue-900/20 border-blue-500" : darkMode ? "hover:bg-gray-700" : "hover:bg-gray-50"}`}
                 >
                   <div className="font-semibold">{student.name}</div>
                   <div className="text-sm text-gray-500">
-                    {student.attempted_count}/{student.total_questions} solved
+                    {student.attempted_count || 0}/
+                    {student.total_questions || 0} solved
                   </div>
                   <div className="text-xs text-gray-400">
-                    Score: {student.total_score} | Avg: {student.average_score.toFixed(1)}
+                    Score: {student.total_score || 0} | Avg:{" "}
+                    {student.average_score
+                      ? parseFloat(student.average_score).toFixed(1)
+                      : "0.0"}
                   </div>
                   <div className="mt-1">
                     <span
-                      className={`text-xs px-2 py-0.5 rounded ${
-                        student.status === "completed"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-yellow-100 text-yellow-700"
-                      }`}
+                      className={`text-xs px-2 py-0.5 rounded ${student.status === "completed" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}
                     >
-                      {student.status === "completed" ? "✅ Completed" : "⏳ Pending"}
+                      {student.status === "completed"
+                        ? "✅ Completed"
+                        : "⏳ Pending"}
                     </span>
                   </div>
                 </button>
@@ -218,14 +226,16 @@ const TeacherDashboard = () => {
           </div>
         </div>
 
-        {/* Student Details & Submissions */}
-        <div className={`flex-1 ${darkMode ? "bg-gray-800" : "bg-white"} rounded-lg shadow overflow-hidden flex flex-col`}>
+        <div
+          className={`flex-1 ${darkMode ? "bg-gray-800" : "bg-white"} rounded-lg shadow overflow-hidden flex flex-col`}
+        >
           {selectedStudent ? (
             <>
               <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                 <h2 className="text-lg font-bold">{selectedStudent.name}</h2>
                 <p className="text-sm text-gray-500">
-                  {selectedStudent.attempted_count}/{selectedStudent.total_questions} questions solved
+                  {selectedStudent.attempted_count || 0}/
+                  {selectedStudent.total_questions || 0} questions solved
                 </p>
               </div>
               <div className="flex-1 overflow-y-auto p-4">
@@ -237,28 +247,20 @@ const TeacherDashboard = () => {
                     {studentSubmissions.map((sub, idx) => (
                       <div
                         key={idx}
-                        className={`p-4 rounded-lg border cursor-pointer transition-all ${
-                          selectedSubmission?.id === sub.id
-                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                            : darkMode
-                            ? "border-gray-700 hover:bg-gray-700"
-                            : "border-gray-200 hover:bg-gray-50"
-                        }`}
                         onClick={() => setSelectedSubmission(sub)}
+                        className={`p-4 rounded-lg border cursor-pointer transition-all ${selectedSubmission?.id === sub.id ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : darkMode ? "border-gray-700 hover:bg-gray-700" : "border-gray-200 hover:bg-gray-50"}`}
                       >
                         <div className="flex justify-between items-start">
                           <div>
-                            <div className="font-semibold">{sub.question_title}</div>
+                            <div className="font-semibold">
+                              {sub.question_title}
+                            </div>
                             <div className="text-sm text-gray-500">
                               Score: {sub.score}/{sub.total_points || 10}
                             </div>
                           </div>
                           <span
-                            className={`text-xs px-2 py-0.5 rounded ${
-                              sub.status === "submitted"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-yellow-100 text-yellow-700"
-                            }`}
+                            className={`text-xs px-2 py-0.5 rounded ${sub.status === "submitted" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}
                           >
                             {sub.status}
                           </span>
@@ -271,12 +273,11 @@ const TeacherDashboard = () => {
                   </div>
                 )}
 
-                {/* Selected Submission Details with Terminal Output */}
                 {selectedSubmission && (
                   <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-900 rounded-lg">
-                    <h3 className="font-bold mb-3">📟 Student's Terminal Output</h3>
-
-                    {/* Terminal Output Display */}
+                    <h3 className="font-bold mb-3">
+                      📟 Student's Terminal Output
+                    </h3>
                     {selectedSubmission.terminal_output ? (
                       <div className="mb-4">
                         <div className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-1">
@@ -288,11 +289,9 @@ const TeacherDashboard = () => {
                       </div>
                     ) : (
                       <div className="mb-4 text-gray-500 text-sm">
-                        No terminal output recorded (student may have submitted without running)
+                        No terminal output recorded
                       </div>
                     )}
-
-                    {/* Code View */}
                     <div className="mb-4">
                       <div className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-1">
                         Submitted Code:
@@ -301,8 +300,6 @@ const TeacherDashboard = () => {
                         {selectedSubmission.code}
                       </pre>
                     </div>
-
-                    {/* Test Results */}
                     {selectedSubmission.test_results && (
                       <div>
                         <div className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-1">
@@ -312,17 +309,15 @@ const TeacherDashboard = () => {
                           {selectedSubmission.test_results.map((test, tidx) => (
                             <div
                               key={tidx}
-                              className={`p-2 rounded text-sm ${
-                                test.passed
-                                  ? "bg-green-100 dark:bg-green-900/30 text-green-700"
-                                  : "bg-red-100 dark:bg-red-900/30 text-red-700"
-                              }`}
+                              className={`p-2 rounded text-sm ${test.passed ? "bg-green-100 dark:bg-green-900/30 text-green-700" : "bg-red-100 dark:bg-red-900/30 text-red-700"}`}
                             >
                               <div className="font-semibold">
-                                Test {test.test_case_index + 1}: {test.passed ? "✅ Passed" : "❌ Failed"}
+                                Test {test.test_case_index + 1}:{" "}
+                                {test.passed ? "✅ Passed" : "❌ Failed"}
                               </div>
                               <div className="text-xs mt-1">
-                                Expected: {test.expected_output?.substring(0, 100)}
+                                Expected:{" "}
+                                {test.expected_output?.substring(0, 100)}
                               </div>
                               <div className="text-xs">
                                 Got: {test.actual_output?.substring(0, 100)}

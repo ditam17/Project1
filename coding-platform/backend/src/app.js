@@ -4,12 +4,14 @@ const helmet = require("helmet");
 const mongoSanitize = require("express-mongo-sanitize");
 const hpp = require("hpp");
 const { createServer } = require("http");
+
 require("dotenv").config();
 
 const authRoutes = require("./routes/auth");
 const { router: studentRoutes, setupSocketIO } = require("./routes/terminal");
 const teacherRoutes = require("./routes/teacher");
 const { apiLimiter, loginLimiter } = require("./middleware/rateLimiter");
+const { verifyToken, requireRole } = require("./middleware/auth");
 
 const app = express();
 const httpServer = createServer(app);
@@ -64,9 +66,9 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-app.use("/api/auth", authRoutes);
-app.use("/api/student", studentRoutes);
-app.use("/api/teacher", teacherRoutes);
+app.use("/api/auth", loginLimiter, authRoutes);
+app.use("/api/student", verifyToken, apiLimiter, studentRoutes);
+app.use("/api/teacher", verifyToken, apiLimiter, teacherRoutes);
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({
