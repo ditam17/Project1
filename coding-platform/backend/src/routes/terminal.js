@@ -411,5 +411,4 @@ router.get(
   },
 );
 
-module.exports = router;
-module.exports.setupSocketIO = setupSocketIO;
+module.exports = { router, setupSocketIO };
