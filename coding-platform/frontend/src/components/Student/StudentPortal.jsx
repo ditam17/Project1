@@ -6,8 +6,13 @@ import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
 import api from "../../services/api";
 
+// Semester I students only ever see C; Semester II students only ever see C++.
+// This is a hard lock, not a default — students cannot switch languages.
+const SEMESTER_LANGUAGE = { I: "c", II: "cpp" };
+
 const StudentPortal = () => {
-  const [language, setLanguage] = useState("c");
+  const initialUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const [language] = useState(SEMESTER_LANGUAGE[initialUser.semester] || "cpp");
   const [questions, setQuestions] = useState([]);
   const [selectedQuestion, setSelectedQuestion] = useState(null);
   const [code, setCode] = useState("");
@@ -434,12 +439,10 @@ const StudentPortal = () => {
     window.location.href = "/login";
   };
 
-  const languages = [
-    { id: "c", name: "C", icon: "🔵" },
-    { id: "cpp", name: "C++", icon: "🟣" },
-    { id: "python", name: "Python", icon: "🟡" },
-    { id: "java", name: "Java", icon: "☕" },
-  ];
+  const languageBadge =
+    language === "c"
+      ? { name: "C Programming", icon: "🔵" }
+      : { name: "C++ Programming", icon: "🟣" };
 
   const getMonacoLanguage = (lang) => {
     const map = {
@@ -463,7 +466,9 @@ const StudentPortal = () => {
           <span className="text-3xl">👨‍🎓</span>
           <div>
             <h1 className="text-xl font-bold">Student Portal</h1>
-            <p className="text-sm text-gray-500">Welcome, {user.name}</p>
+            <p className="text-sm text-gray-500">
+              Welcome, {user.name} · Semester {user.semester}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -488,25 +493,13 @@ const StudentPortal = () => {
         </div>
       </header>
 
-      {/* Language Selection */}
+      {/* Locked language badge — determined by the student's semester, not user-selectable */}
       <div className={`${darkMode ? "bg-gray-800" : "bg-white"} px-6 py-3 shadow-sm`}>
         <div className="flex gap-3">
-          {languages.map((lang) => (
-            <button
-              key={lang.id}
-              onClick={() => setLanguage(lang.id)}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                language === lang.id
-                  ? "bg-blue-500 text-white shadow-md"
-                  : darkMode
-                  ? "bg-gray-700 hover:bg-gray-600"
-                  : "bg-gray-100 hover:bg-gray-200"
-              }`}
-            >
-              <span className="mr-2">{lang.icon}</span>
-              {lang.name}
-            </button>
-          ))}
+          <span className="px-4 py-2 rounded-lg font-medium bg-blue-500 text-white shadow-md">
+            <span className="mr-2">{languageBadge.icon}</span>
+            {languageBadge.name}
+          </span>
         </div>
       </div>
 

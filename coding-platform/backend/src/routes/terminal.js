@@ -1,5 +1,10 @@
 const express = require("express");
-const { verifyToken, requireRole } = require("../middleware/auth");
+const {
+  verifyToken,
+  requireRole,
+  requireSemesterLanguage,
+  SEMESTER_LANGUAGE,
+} = require("../middleware/auth");
 const {
   codeExecutionLimiter,
   submissionLimiter,
@@ -71,6 +76,15 @@ function setupSocketIO(httpServer) {
       const { code, language } = data;
       if (socket.user.role !== "student") {
         socket.emit("error", { message: "Only students can use the terminal" });
+        return;
+      }
+      const allowedLanguage = SEMESTER_LANGUAGE[socket.user.semester];
+      if (!allowedLanguage || language !== allowedLanguage) {
+        socket.emit("error", {
+          message: allowedLanguage
+            ? `Semester ${socket.user.semester} students can only use ${allowedLanguage.toUpperCase()}.`
+            : "No semester assigned to this account",
+        });
         return;
       }
       const validationError = validateCode(code, language);
@@ -145,6 +159,7 @@ router.get(
   "/questions/:language",
   verifyToken,
   requireRole("student"),
+  requireSemesterLanguage,
   async (req, res, next) => {
     try {
       const { language } = req.params;
@@ -196,6 +211,7 @@ router.post(
   "/compile",
   verifyToken,
   requireRole("student"),
+  requireSemesterLanguage,
   codeExecutionLimiter,
   async (req, res, next) => {
     try {
@@ -225,6 +241,7 @@ router.post(
   "/draft",
   verifyToken,
   requireRole("student"),
+  requireSemesterLanguage,
   async (req, res, next) => {
     try {
       const { question_id, code, language } = req.body;
@@ -252,6 +269,7 @@ router.post(
   "/submit",
   verifyToken,
   requireRole("student"),
+  requireSemesterLanguage,
   submissionLimiter,
   async (req, res, next) => {
     try {

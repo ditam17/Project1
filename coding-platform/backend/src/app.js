@@ -10,6 +10,7 @@ require("dotenv").config();
 const authRoutes = require("./routes/auth");
 const { router: studentRoutes, setupSocketIO } = require("./routes/terminal");
 const teacherRoutes = require("./routes/teacher");
+const adminRoutes = require("./routes/admin");
 const { apiLimiter, loginLimiter } = require("./middleware/rateLimiter");
 const { verifyToken, requireRole } = require("./middleware/auth");
 
@@ -69,6 +70,7 @@ if (process.env.NODE_ENV === "production") {
 app.use("/api/auth", loginLimiter, authRoutes);
 app.use("/api/student", verifyToken, apiLimiter, studentRoutes);
 app.use("/api/teacher", verifyToken, apiLimiter, teacherRoutes);
+app.use("/api/admin", verifyToken, apiLimiter, adminRoutes);
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({

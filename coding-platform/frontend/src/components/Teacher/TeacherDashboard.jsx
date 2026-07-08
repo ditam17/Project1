@@ -119,8 +119,15 @@ const TeacherDashboard = () => {
         <div className="flex items-center gap-3">
           <span className="text-3xl">👨‍🏫</span>
           <div>
-            <h1 className="text-xl font-bold">Teacher Dashboard</h1>
-            <p className="text-sm text-gray-500">Monitor student progress</p>
+            <h1 className="text-xl font-bold">
+              {user.semester === "I"
+                ? "C Programming Dashboard"
+                : "C++ Programming Dashboard"}
+            </h1>
+            <p className="text-sm text-gray-500">
+              {user.name ? `${user.name} · ` : ""}Semester {user.semester} ·
+              Monitor student progress
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-4">

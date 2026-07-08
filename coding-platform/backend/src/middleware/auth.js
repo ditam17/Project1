@@ -27,4 +27,36 @@ const requireRole = (role) => {
   };
 };
 
-module.exports = { verifyToken, requireRole };
+// Maps each semester to the single programming language it is allowed to use.
+// Semester I -> C, Semester II -> C++
+const SEMESTER_LANGUAGE = { I: "c", II: "cpp" };
+
+// Blocks any request whose :language param or body.language does not match
+// the language assigned to the logged-in user's semester.
+// e.g. a Semester I (C) student can never touch Semester II (C++) content.
+const requireSemesterLanguage = (req, res, next) => {
+  const allowedLanguage = SEMESTER_LANGUAGE[req.user.semester];
+
+  if (!allowedLanguage) {
+    return res
+      .status(403)
+      .json({ error: "No semester assigned to this account" });
+  }
+
+  const requestedLanguage = req.params.language || req.body.language;
+
+  if (requestedLanguage && requestedLanguage !== allowedLanguage) {
+    return res.status(403).json({
+      error: `Semester ${req.user.semester} students can only use ${allowedLanguage.toUpperCase()}.`,
+    });
+  }
+
+  next();
+};
+
+module.exports = {
+  verifyToken,
+  requireRole,
+  requireSemesterLanguage,
+  SEMESTER_LANGUAGE,
+};

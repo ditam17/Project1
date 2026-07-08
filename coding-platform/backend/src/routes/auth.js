@@ -38,7 +38,7 @@ const validateLoginInput = (login_id, password) => {
 
 // Login with proper password hashing
 router.post("/login", async (req, res) => {
-  const { login_id, password, role } = req.body;
+  const { login_id, password, role, semester } = req.body;
 
   if (!login_id || !password || !role) {
     return res
@@ -46,8 +46,18 @@ router.post("/login", async (req, res) => {
       .json({ error: "Login ID, password, and role are required" });
   }
 
-  if (!["student", "teacher"].includes(role)) {
+  if (!["student", "teacher", "admin"].includes(role)) {
     return res.status(400).json({ error: "Invalid role" });
+  }
+
+  // Students and teachers must pick a semester before logging in.
+  // College Administrators are not tied to a semester.
+  if (["student", "teacher"].includes(role)) {
+    if (!["I", "II"].includes(semester)) {
+      return res
+        .status(400)
+        .json({ error: "Please select a valid semester (I or II)" });
+    }
   }
 
   // Validate input format
@@ -74,6 +84,30 @@ router.post("/login", async (req, res) => {
       });
     }
 
+    // Check if selected semester matches user's actual semester
+    // (First Semester users cannot log into Second Semester, and vice versa)
+    if (["student", "teacher"].includes(role)) {
+      // If this account has no semester value at all, the users table
+      // most likely hasn't been migrated to the new schema yet (schema.sql
+      // needs to be re-run so the semester column exists and is populated).
+      if (user.semester === undefined || user.semester === null) {
+        console.error(
+          `Login blocked: user '${user.login_id}' has no semester value. Has schema.sql been re-run against this database?`,
+        );
+        return res.status(500).json({
+          error:
+            "This account has no semester assigned. The database may need the latest schema.sql re-applied.",
+        });
+      }
+
+      if (user.semester !== semester) {
+        const semesterLabel = (s) => (s === "I" ? "First (I)" : "Second (II)");
+        return res.status(403).json({
+          error: `Please select the correct semester.`,
+        });
+      }
+    }
+
     const validPassword = await bcrypt.compare(password, user.password_hash);
 
     if (!validPassword) {
@@ -87,7 +121,12 @@ router.post("/login", async (req, res) => {
     );
 
     const token = jwt.sign(
-      { userId: user.id, role: user.role, name: user.name },
+      {
+        userId: user.id,
+        role: user.role,
+        name: user.name,
+        semester: user.semester,
+      },
       process.env.JWT_SECRET,
       { expiresIn: "2h" },
     );
@@ -100,6 +139,7 @@ router.post("/login", async (req, res) => {
         login_id: user.login_id,
         name: user.name,
         role: user.role,
+        semester: user.semester,
       },
     });
   } catch (err) {
