@@ -120,11 +120,11 @@ CREATE INDEX idx_plagiarism_question ON plagiarism_results(question_id);
 -- added when the Teacher role work begins.
 -- ============================================
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('teacher1', '$2a$10$fMayvUWaVTI/P7Tj7tent.exOg2TydPQ6BByzUaa.XjDgSx5cCBsO', 'Prof. Smith', 'teacher', 'II'),
-('teacher2', '$2a$10$fMayvUWaVTI/P7Tj7tent.exOg2TydPQ6BByzUaa.XjDgSx5cCBsO', 'Prof. Johnson', 'teacher', 'II'),
-('teacher3', '$2a$10$fMayvUWaVTI/P7Tj7tent.exOg2TydPQ6BByzUaa.XjDgSx5cCBsO', 'Prof. Williams', 'teacher', 'II'),
-('teacher4', '$2a$10$fMayvUWaVTI/P7Tj7tent.exOg2TydPQ6BByzUaa.XjDgSx5cCBsO', 'Prof. Brown', 'teacher', 'II'),
-('teacher5', '$2a$10$fMayvUWaVTI/P7Tj7tent.exOg2TydPQ6BByzUaa.XjDgSx5cCBsO', 'Prof. Davis', 'teacher', 'II');
+('teacher1', '$2b$10$9i0RcAXJCgu/V78HMqXMyO0tsA50pTP4Kv6DErUUR1BNUPfd2Fcky', 'Prof. Smith', 'teacher', 'II'),
+('teacher2', '$2b$10$9i0RcAXJCgu/V78HMqXMyO0tsA50pTP4Kv6DErUUR1BNUPfd2Fcky', 'Prof. Johnson', 'teacher', 'II'),
+('teacher3', '$2b$10$9i0RcAXJCgu/V78HMqXMyO0tsA50pTP4Kv6DErUUR1BNUPfd2Fcky', 'Prof. Williams', 'teacher', 'II'),
+('teacher4', '$2b$10$9i0RcAXJCgu/V78HMqXMyO0tsA50pTP4Kv6DErUUR1BNUPfd2Fcky', 'Prof. Brown', 'teacher', 'II'),
+('teacher5', '$2b$10$9i0RcAXJCgu/V78HMqXMyO0tsA50pTP4Kv6DErUUR1BNUPfd2Fcky', 'Prof. Davis', 'teacher', 'II');
 -- ============================================
 -- OPTIONAL: Sample Semester I (C) teacher for testing the First Semester
 -- teacher flow end-to-end. Password: Teacher@123 (hash freshly generated
@@ -148,65 +148,65 @@ INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
 -- the same way with semester = 'I'.
 -- ============================================
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('alisha.suwal', '$2b$12$AuChfZAM9HW4Sgw2gopyrOX5RLf5pPRO83xjtMgqqqDWWNa8kWlR2', 'Alisha Suwal', 'student', 'II');
+('alisha.suwal', '$2b$10$OhibZTzNQDG6SMNRPy1EGe0yHh8vB5mJ/PN9nRCc3fEi7L.Na64HW', 'Alisha Suwal', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('aman.shankar', '$2b$12$XH52boi8673AzNgjPOblruwOCw1wyEJbenk7w84oJ5bRIjic/XlcS', 'Aman Shankar', 'student', 'II');
+('aman.shankar', '$2b$10$7QpUxaCOvMfo/UYItuc9OOOb4djrNWkS81n3TB2tTEFdltmElgJim', 'Aman Shankar', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('anubhav.bhandari', '$2b$12$0AwsPTmaazEOYihEWfRxh.RcQg.YbiS19fxkXpP1w12UPFwAxxhY2', 'Anubhav Bhandari', 'student', 'II');
+('anubhav.bhandari', '$2b$10$kwJ2mk1lYawXJoYVl0FUK.eSzK9n2zIjNybuBLxRe8m77XQA7I.22', 'Anubhav Bhandari', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('arpit.regmi', '$2b$12$Mkzk4uadTFwvvY4rAA6JR.7enMbSKubuGbrEiF/vvhIaBtDFOtuVe', 'Arpit Regmi', 'student', 'II');
+('arpit.regmi', '$2b$10$WIT1BSN9yDKS.zNyUQlbLOgTdCytmwtTVoE5sb97Bb23mau/isEge', 'Arpit Regmi', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('ashim.chaudhary', '$2b$12$AAAiKyOy4whe/jF2QwiyUOnu8dG2Hy8NEM.h9gAKWSmO998WceEAO', 'Ashim Chaudhary', 'student', 'II');
+('ashim.chaudhary', '$2b$10$w.1dG35fHlubHnqFD5/kVePhXEIGZXjdfAtv3KJ/IoDZ.ZvR.v/wy', 'Ashim Chaudhary', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('asim.poudel', '$2b$12$5BUnd2VzB5qJr7t.qVnUHODZJfjUmrLilxYDLBaKclL3oPyK4Hw/G', 'Asim Poudel', 'student', 'II');
+('asim.poudel', '$2b$10$DirXLAQM9PFWm54U6FXiIuutGY9xYMFs4oy9vKSDj93OOmuirB2mi', 'Asim Poudel', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('bikram.bohara', '$2b$12$qC351fGbRe8aPWDZtYMXp.xVbMzZLb0H6TngAWsu/N72SiNkBK0u.', 'Bikram Bohara', 'student', 'II');
+('bikram.bohara', '$2b$10$YcmC76Z7tiT8iREk1Du7wuiJestvdzv6ekecaihOOr5tHpOIqQ.x2', 'Bikram Bohara', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('bipin.sanjel', '$2b$12$YT6CcoUUeMAaJI9tvHHI7uhWClo3ZTBWb7vkJ9OxihuonzLrD88CO', 'Bipin Sanjel', 'student', 'II');
+('bipin.sanjel', '$2b$10$FKtDklm6FJU41mGqyRXSpO/xM40VL.sRY7rbDPb09VT6oU.KMbpRS', 'Bipin Sanjel', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('bisheshata.pyakurel', '$2b$12$u5oT.WSMtVH31ci3tlZLfepPYNCW9GmKA2wQ00rsEz1nJSqsiTWAi', 'Bisheshata Pyakurel', 'student', 'II');
+('bisheshata.pyakurel', '$2b$10$PU8xGJs/SgmPyKLiZIJshOa.XvOm2A1zqWGMhVdTTkt3aTfPajaPm', 'Bisheshata Pyakurel', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('danial.shahi', '$2b$12$Vq2a4Jr406hhlisOWAu0q.4j4hODiaJZtULbPEYRZSgAODKoL9r5q', 'Danial Kumar Shahi', 'student', 'II');
+('danial.shahi', '$2b$10$LlKAqDH6aCHz9V392S3rgecFjm8USuewccpxOn67juqFQDp8CVpYK', 'Danial Kumar Shahi', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('dipesh.mahato', '$2b$12$yvi3GKv2pubeoXuCXOQ.ROxhhgYc5/GqPhhfmZhjDC61N6/4jF7qW', 'Dipesh Kumar Mahato', 'student', 'II');
+('dipesh.mahato', '$2b$10$PU6exolluVIbvR3gRfcTwOHjvBOUc28d6BeyJsKa1/o2tVIimBxle', 'Dipesh Kumar Mahato', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('ditam.gupta', '$2b$12$HLj5lHNOu3QcO02nBDza1OGiqmy/hRWJ6rv0OEfCSWBVX4sZAYGTi', 'Ditam Gupta', 'student', 'II');
+('ditam.gupta', '$2b$10$R00rmCZAGBd7tdupSOOMbOkad/y1wEOqDE5e1QopExMg8NCCWphPW', 'Ditam Gupta', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('jiden.pandey', '$2b$12$DeS7C8jThANehVr4hJOn7ex0sa/Tsa1OwdEmqqCa9jRLL11xxvvvi', 'Jiden pandey', 'student', 'II');
+('jiden.pandey', '$2b$10$bEXLynYu.DpBFjhBGbpWGeA5dwlYlb4O1UC.isULfGJRvFl9JxVfe', 'Jiden pandey', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('krishala.khadka', '$2b$12$jFZWKzHF2XeMabCR7srhTe39w2NXmQl3DCE9FPzklMn51qSKUL/xG', 'Krishala Khadka', 'student', 'II');
+('krishala.khadka', '$2b$10$UIie4u1A.LnceyevgUGepuzeRQ3rfI7C1iG2WqB4/qvp4uGj.y6yq', 'Krishala Khadka', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('lujah.maharjan', '$2b$12$XKteLoHzraujQefE513H.O1afWI9PN7Lsvd0S63/lQS2C/fW0VNee', 'Lujah Maharjan', 'student', 'II');
+('lujah.maharjan', '$2b$10$vnXywnrdJts9w5VdVuquaOnWZNRZrDWX5Ft4M2k/DzRVPzyzDhIWi', 'Lujah Maharjan', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('palistha.shrestha', '$2b$12$qrDtB6TwkKo/XOHdR1oqA.HfAtf36MvM6K82M09Qgr52umrHuIYe2', 'Palistha Shrestha', 'student', 'II');
+('palistha.shrestha', '$2b$10$JWrhkK25wwDAplb/cKJke.OMQz7/1hicch1yoN5xh2k4qK3aqjNQ6', 'Palistha Shrestha', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('prabin.sapkota', '$2b$12$uN68MAXlsZxxSfMf4sLxAumz09puI0T0JJZnRtdEiYXdAaReLbWoW', 'Prabin Sapkota', 'student', 'II');
+('prabin.sapkota', '$2b$10$ekBRUEc2QbIljx60fj6Hi.0/kkmV/vRxucNwlGEPqlO2AbpjuiWqa', 'Prabin Sapkota', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('prasant.gahatraj', '$2b$12$pN7Bdq41KSHBg7O28cwSOuaWVZP.e0SMjDZlwF2wOFiIS8RSTe5ZS', 'Prasant Gahatraj', 'student', 'II');
+('prasant.gahatraj', '$2b$10$5XrX.jNS5neIxQsln8MLU.L9khPYuyqlcD9OxegPBX0TzoY4iMa3u', 'Prasant Gahatraj', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('rujan.kc', '$2b$12$ET6q7mq6Oxq3Ihffb/gWC.HUZwMAis3VO1m3O56ldkSF32BSyWDYW', 'Rujan K.C.', 'student', 'II');
+('rujan.kc', '$2b$10$eUZbxs7a.oKh81e8i.bT4.u7HNdfLkmCSfVGk/JlLfNnZGfbpapda', 'Rujan K.C.', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('sandip.sharki', '$2b$12$vkq0ep7vAe4CxqysNZSE0eLiY9WMEpNTysOkbalCcX1wWAWDOZfd2', 'Sandip Sharki', 'student', 'II');
+('sandip.sharki', '$2b$10$31kpmhnfWgxCOBzJQpLkvOG0zxmc13rkVL2b1L9MvOF6UXhGfXAIa', 'Sandip Sharki', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('saraswoti.thakur', '$2b$12$ZAD/Nofp0f0F7RT11OTLNOnqxqJdWWHws7b6xc7aCgmCWLnLqyWB6', 'Saraswoti Kumari Thakur', 'student', 'II');
+('saraswoti.thakur', '$2b$10$r9VUaGGcxw9yaOiI2ytnkeRkOU8Mc.o4uJQAfLWMSglOcUQwJ2MIa', 'Saraswoti Kumari Thakur', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('sijan.thapa', '$2b$12$JiO.jiufaNVS.BkzgeIsmutthSBghd4nJVeRhkO4vkDgCL/ZmBQbG', 'Sijan Thapa', 'student', 'II');
+('sijan.thapa', '$2b$10$BozN2FydaOhQGKpuq1ECfueBqNzQHpisi3b4qxB0IJgCi8bzwoCgK', 'Sijan Thapa', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('sonam.khatri', '$2b$12$0l52hf.DkItQmpLwqHvbx.4ePIdWLy7PNCHCYPeBLgjkZ3nA1xOMy', 'Sonam Khatri', 'student', 'II');
+('sonam.khatri', '$2b$10$rSXC72zgyADVv42iTlL.o.pwAg6SUVAsfuD2KPJ9VOz3iAbasUoFy', 'Sonam Khatri', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('sujan.gharti', '$2b$12$QGIS37pmX5PHUQ7bwcsb/.MPO38OdiLpTX2t7HomausUNMn3uRmwG', 'Sujan Gharti', 'student', 'II');
+('sujan.gharti', '$2b$10$uO71r.r25j0oqGXmmji1LOtnXzh7lGBKwySEB6qihrGIQEQxxj1S.', 'Sujan Gharti', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('susan.sambahamphe', '$2b$12$arc8zUW2PVwEKFuFzgR0iOc0dNDdRHq6SqZbcI//LmWGkFJgBl4Rm', 'Susan sambahamphe', 'student', 'II');
+('susan.sambahamphe', '$2b$10$w7K8R6xHwwe8AOOGKkcehuRqaGykZkGVfwwJtAuW38k9jyZpSY.b.', 'Susan sambahamphe', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('swastika.aryal', '$2b$12$FuiXpCn2ufAn.yFY9D.zd.1OnoiwsVslIzLyRUyv/HeNkuSVH/B/6', 'Swastika Aryal', 'student', 'II');
+('swastika.aryal', '$2b$10$VIBo6vNq1v9ZPrSTfnDKOuWGeyEFoLyfWsARY/KTC8EWQzcZyjkea', 'Swastika Aryal', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('swophnil.magar', '$2b$12$/ftd0QS6XTQ2hVdvPWDx6uZNWMllcfLDs9UX8NSbMzqcPsHvXRdu6', 'Swophnil Thapa Magar', 'student', 'II');
+('swophnil.magar', '$2b$10$smtjlqKblIvkj69.8xthZ.PndmVVXc2ccMzfyClv8wjckJEUWmQrW', 'Swophnil Thapa Magar', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('unisha.ale', '$2b$12$pGMwIReAkLn0B2mO3CI16.OavdC1Iqppm9CRc0/a7JZnJKkINzGfS', 'Unisha Ale', 'student', 'II');
+('unisha.ale', '$2b$10$QdJw3eiOlgzQwTQqJUYXDuQuUlIRHTGJk0XhWDrRnZMkVwrjosxD2', 'Unisha Ale', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('vijay.lama', '$2b$12$Shj.dOYZ706WCfDV8pLDf.MJJpU0Edr4VNJvJ7zGGiMlJN2N96rk6', 'Vijay Singh Lama', 'student', 'II');
+('vijay.lama', '$2b$10$CfaWFiDoRGzYZ8lzdL06xeppvWuhQbtkQ/AS9r11JCUsCNm9oEnsy', 'Vijay Singh Lama', 'student', 'II');
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('yoban.sahi', '$2b$12$P3GKcnZrZOtDuPsqLd4UXOsb8RfBq2M8a1HxAh28s/Q7scECCQLNu', 'Yoban sahi', 'student', 'II');
+('yoban.sahi', '$2b$10$GtKtyG2/YqhJp3yevzu/.OJVRjb01mojHpekQXcM8ikiSIQiMPdnC', 'Yoban sahi', 'student', 'II');
 
 -- ============================================
 -- OPTIONAL: Sample Semester I (C) student for testing the First Semester
