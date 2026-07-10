@@ -68,9 +68,9 @@ if (process.env.NODE_ENV === "production") {
 }
 
 app.use("/api/auth", loginLimiter, authRoutes);
-app.use("/api/student", verifyToken, apiLimiter, studentRoutes);
-app.use("/api/teacher", verifyToken, apiLimiter, teacherRoutes);
-app.use("/api/admin", verifyToken, apiLimiter, adminRoutes);
+app.use("/api/student", verifyToken, studentRoutes);
+app.use("/api/teacher", verifyToken, teacherRoutes);
+app.use("/api/admin", verifyToken, adminRoutes);
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({

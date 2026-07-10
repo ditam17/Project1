@@ -127,7 +127,8 @@ class BatchExecutionService {
       await fs.writeFile(path.join(tempDir, "input.txt"), input || "");
 
       for (const [fileName, fileContent] of Object.entries(inputFiles)) {
-        await fs.writeFile(path.join(tempDir, fileName), fileContent);
+        const safeName = path.basename(fileName);
+        await fs.writeFile(path.join(tempDir, safeName), fileContent);
       }
 
       let dockerCmd;
@@ -191,7 +192,9 @@ class BatchExecutionService {
               expectedFiles,
             )) {
               try {
-                const actualPath = path.join(tempDir, fileName);
+                const safeName = path.basename(fileName);
+                const actualPath = path.join(tempDir, safeName);
+
                 let actualContent = "";
                 if (await fs.pathExists(actualPath)) {
                   actualContent = await fs.readFile(actualPath, "utf-8");

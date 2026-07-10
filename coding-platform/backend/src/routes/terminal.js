@@ -109,8 +109,8 @@ function setupSocketIO(httpServer) {
         result.sessionId,
         (output) => socket.emit("output", { data: output }),
         (error) => socket.emit("output", { data: error, isError: true }),
-        (code) => {
-          socket.emit("exit", { code });
+        (exitCode) => {
+          socket.emit("exit", { code: exitCode });
           currentSessionId = null;
         },
       );

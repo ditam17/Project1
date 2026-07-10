@@ -128,7 +128,11 @@ router.post("/login", async (req, res) => {
         semester: user.semester,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "2h" },
+      {
+        expiresIn: "2h",
+        issuer: "coding-platform",
+        audience: "coding-platform-users",
+      },
     );
 
     res.json({

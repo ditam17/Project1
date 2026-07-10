@@ -1,4 +1,5 @@
-const { spawn } = require("child_process");
+// Line 1
+const { spawn, exec } = require("child_process");
 const fs = require("fs-extra");
 const path = require("path");
 const os = require("os");
@@ -317,7 +318,6 @@ class InteractiveTerminalService {
    */
   execPromise(command) {
     return new Promise((resolve, reject) => {
-      const { exec } = require("child_process");
       exec(command, { maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
         if (error && !stdout) {
           reject({ error, stdout, stderr });
