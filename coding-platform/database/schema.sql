@@ -48,12 +48,17 @@ CREATE TABLE questions (
     points INTEGER DEFAULT 10,
     created_by INTEGER REFERENCES users(id),
     is_active BOOLEAN DEFAULT true,
+    -- 'assignment' questions count toward a student's required/graded work;
+    -- 'practice' questions are optional extra practice shown in a separate
+    -- student-facing list but graded the same way once submitted.
+    category VARCHAR(20) CHECK (category IN ('assignment', 'practice')) NOT NULL DEFAULT 'assignment',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_questions_language ON questions(language);
 CREATE INDEX idx_questions_active ON questions(is_active);
+CREATE INDEX idx_questions_category ON questions(category);
 
 -- ============================================
 -- SUBMISSIONS TABLE (Updated with terminal_output)

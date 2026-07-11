@@ -302,15 +302,24 @@ router.post(
         time_limit,
         memory_limit,
         points,
+        category,
       } = req.body;
       if (!title || !description || !test_cases) {
         return res.status(400).json({
           error: "Title, description, and test_cases are required",
         });
       }
+      if (
+        category !== undefined &&
+        !["assignment", "practice"].includes(category)
+      ) {
+        return res.status(400).json({
+          error: "category must be 'assignment' or 'practice'",
+        });
+      }
       const result = await pool.query(
-        `INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        `INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by, category)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
         [
           title,
           description,
@@ -321,6 +330,7 @@ router.post(
           memory_limit || 64,
           points || 10,
           req.user.userId,
+          category || "assignment",
         ],
       );
       res.status(201).json(result.rows[0]);
@@ -350,13 +360,23 @@ router.put(
         memory_limit,
         points,
         is_active,
+        category,
       } = req.body;
+      if (
+        category !== undefined &&
+        !["assignment", "practice"].includes(category)
+      ) {
+        return res.status(400).json({
+          error: "category must be 'assignment' or 'practice'",
+        });
+      }
       // language column is intentionally left untouched here — a teacher
       // can't move a question into the other semester's language.
       const result = await pool.query(
         `UPDATE questions SET title = $1, description = $2, starter_code = $3,
-       test_cases = $4, time_limit = $5, memory_limit = $6, points = $7, is_active = $8, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $9 RETURNING *`,
+       test_cases = $4, time_limit = $5, memory_limit = $6, points = $7, is_active = $8,
+       category = COALESCE($9, category), updated_at = CURRENT_TIMESTAMP
+       WHERE id = $10 RETURNING *`,
         [
           title,
           description,
@@ -366,6 +386,7 @@ router.put(
           memory_limit,
           points,
           is_active,
+          category || null,
           id,
         ],
       );

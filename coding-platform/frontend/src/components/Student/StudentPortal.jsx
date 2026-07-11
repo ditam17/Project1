@@ -10,6 +10,66 @@ import api from "../../services/api";
 // This is a hard lock, not a default — students cannot switch languages.
 const SEMESTER_LANGUAGE = { I: "c", II: "cpp" };
 
+// A synthetic "question" that puts the editor in unrestricted practice
+// mode — not tied to grading, submission, or plagiarism checks. It never
+// leaves the browser (no backend call uses its id); handlers below
+// special-case it via the isFreePractice flag.
+const makeFreePracticeEntry = (language) => ({
+  id: "free-practice",
+  title: "Free Practice",
+  language,
+  points: 0,
+  isFreePractice: true,
+});
+
+// Renders one titled list of question cards (used for both the
+// Assignments and Extra Practice sections so the card markup and
+// submitted-checkmark logic only live in one place).
+const QuestionGroup = ({
+  title,
+  questions,
+  selectedQuestion,
+  submissionStatus,
+  darkMode,
+  onSelect,
+  emptyLabel,
+}) => (
+  <div className="mb-6">
+    <h2 className="text-lg font-bold mb-4">{title}</h2>
+    <div className="space-y-3">
+      {questions.map((q) => {
+        const isQSubmitted = submissionStatus[q.id] === "submitted";
+        return (
+          <button
+            key={q.id}
+            onClick={() => onSelect(q)}
+            className={`w-full text-left p-4 rounded-lg border transition-all ${
+              selectedQuestion?.id === q.id
+                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                : darkMode
+                ? "border-gray-700 hover:bg-gray-700"
+                : "border-gray-200 hover:bg-gray-50"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-semibold">{q.title}</span>
+              {isQSubmitted && (
+                <span className="text-green-500 text-lg" title="Submitted">✅</span>
+              )}
+            </div>
+            <div className="text-sm text-gray-500 mt-1">
+              {q.points} points • {q.language.toUpperCase()}
+            </div>
+          </button>
+        );
+      })}
+      {questions.length === 0 && (
+        <p className="text-sm text-gray-400">{emptyLabel}</p>
+      )}
+    </div>
+  </div>
+);
+
 const StudentPortal = () => {
   const initialUser = JSON.parse(localStorage.getItem("user") || "{}");
   const [language] = useState(SEMESTER_LANGUAGE[initialUser.semester] || "cpp");
@@ -219,13 +279,24 @@ const StudentPortal = () => {
   }, [language]);
 
   useEffect(() => {
-    if (selectedQuestion) {
-      fetchSubmissions(selectedQuestion.id);
-      fetchPlagiarism(selectedQuestion.id);
-      // Check if this question is already submitted
-      setIsSubmitted(submissionStatus[selectedQuestion.id] === "submitted");
+    if (!selectedQuestion) return;
+
+    if (selectedQuestion.isFreePractice) {
+      // Free practice is never submitted or checked for plagiarism —
+      // skip the network calls entirely rather than hitting the backend
+      // with a non-numeric question id.
+      setIsSubmitted(false);
       setIsEditing(false);
+      setSubmissions([]);
+      setPlagiarismMatches([]);
+      return;
     }
+
+    fetchSubmissions(selectedQuestion.id);
+    fetchPlagiarism(selectedQuestion.id);
+    // Check if this question is already submitted
+    setIsSubmitted(submissionStatus[selectedQuestion.id] === "submitted");
+    setIsEditing(false);
   }, [selectedQuestion, submissionStatus]);
 
   const fetchQuestions = async () => {
@@ -276,7 +347,11 @@ const StudentPortal = () => {
 
   const handleQuestionSelect = (q) => {
     setSelectedQuestion(q);
-    setCode(q.starter_code || "");
+    setCode(
+      q.isFreePractice
+        ? "// Write anything here — this space isn't graded or submitted.\n// Use Run to compile and test your code.\n"
+        : q.starter_code || "",
+    );
     setOutput("");
     setTestResults(null);
     setTerminalOutput("");
@@ -376,7 +451,7 @@ const StudentPortal = () => {
 
   // Submit code with AUTO-GRADING + terminal output
   const handleSubmit = async () => {
-    if (!selectedQuestion) return;
+    if (!selectedQuestion || selectedQuestion.isFreePractice) return;
     setIsSubmitting(true);
     setOutput("Submitting...");
     setTestResults(null);
@@ -420,7 +495,7 @@ const StudentPortal = () => {
   };
 
   const handleSaveDraft = async () => {
-    if (!selectedQuestion) return;
+    if (!selectedQuestion || selectedQuestion.isFreePractice) return;
     try {
       await api.post("/student/draft", {
         question_id: selectedQuestion.id,
@@ -509,35 +584,43 @@ const StudentPortal = () => {
         <div
           className={`w-80 ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-r overflow-y-auto p-4`}
         >
-          <h2 className="text-lg font-bold mb-4">📋 Questions</h2>
-          <div className="space-y-3">
-            {questions.map((q) => {
-              const isQSubmitted = submissionStatus[q.id] === "submitted";
-              return (
-                <button
-                  key={q.id}
-                  onClick={() => handleQuestionSelect(q)}
-                  className={`w-full text-left p-4 rounded-lg border transition-all ${
-                    selectedQuestion?.id === q.id
-                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                      : darkMode
-                      ? "border-gray-700 hover:bg-gray-700"
-                      : "border-gray-200 hover:bg-gray-50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">{q.title}</span>
-                    {isQSubmitted && (
-                      <span className="text-green-500 text-lg" title="Submitted">✅</span>
-                    )}
-                  </div>
-                  <div className="text-sm text-gray-500 mt-1">
-                    {q.points} points • {q.language.toUpperCase()}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          {/* Free Practice - always available, never graded */}
+          <h2 className="text-lg font-bold mb-3">🧑‍💻 Practice Space</h2>
+          <button
+            onClick={() => handleQuestionSelect(makeFreePracticeEntry(language))}
+            className={`w-full text-left p-4 rounded-lg border transition-all mb-6 ${
+              selectedQuestion?.isFreePractice
+                ? "border-purple-500 bg-purple-50 dark:bg-purple-900/20"
+                : darkMode
+                ? "border-gray-700 hover:bg-gray-700"
+                : "border-gray-200 hover:bg-gray-50"
+            }`}
+          >
+            <div className="font-semibold">Free Practice</div>
+            <div className="text-sm text-gray-500 mt-1">
+              Open editor · not graded · nothing submitted
+            </div>
+          </button>
+
+          <QuestionGroup
+            title="📘 Assignments"
+            questions={questions.filter((q) => q.category !== "practice")}
+            selectedQuestion={selectedQuestion}
+            submissionStatus={submissionStatus}
+            darkMode={darkMode}
+            onSelect={handleQuestionSelect}
+            emptyLabel="No assignments yet."
+          />
+
+          <QuestionGroup
+            title="🧪 Extra Practice"
+            questions={questions.filter((q) => q.category === "practice")}
+            selectedQuestion={selectedQuestion}
+            submissionStatus={submissionStatus}
+            darkMode={darkMode}
+            onSelect={handleQuestionSelect}
+            emptyLabel="No extra practice questions yet."
+          />
 
           {/* Plagiarism Section */}
           {plagiarismMatches.length > 0 && (
@@ -587,6 +670,11 @@ const StudentPortal = () => {
                   ({selectedQuestion.language.toUpperCase()})
                 </span>
               )}
+              {selectedQuestion?.isFreePractice && (
+                <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs font-bold">
+                  🧑‍💻 PRACTICE · NOT GRADED
+                </span>
+              )}
               {isSubmitted && !isEditing && (
                 <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold">
                   ✅ SUBMITTED
@@ -599,13 +687,15 @@ const StudentPortal = () => {
               )}
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={handleSaveDraft}
-                disabled={!selectedQuestion}
-                className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 disabled:opacity-50 text-sm"
-              >
-                💾 Save Draft
-              </button>
+              {!selectedQuestion?.isFreePractice && (
+                <button
+                  onClick={handleSaveDraft}
+                  disabled={!selectedQuestion}
+                  className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 disabled:opacity-50 text-sm"
+                >
+                  💾 Save Draft
+                </button>
+              )}
               <button
                 onClick={handleRunCode}
                 disabled={!selectedQuestion || isRunning}
@@ -622,31 +712,32 @@ const StudentPortal = () => {
                 </button>
               )}
 
-              {/* Submit / Submitted / Edit buttons */}
-              {!isSubmitted ? (
-                <button
-                  onClick={handleSubmit}
-                  disabled={!selectedQuestion || isSubmitting}
-                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
-                >
-                  {isSubmitting ? "⏳ Submitting..." : "📤 Submit"}
-                </button>
-              ) : !isEditing ? (
-                <button
-                  onClick={handleEdit}
-                  className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
-                >
-                  ✏️ Edit
-                </button>
-              ) : (
-                <button
-                  onClick={handleSubmit}
-                  disabled={isSubmitting}
-                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
-                >
-                  {isSubmitting ? "⏳ Submitting..." : "📤 Re-Submit"}
-                </button>
-              )}
+              {/* Submit / Submitted / Edit buttons - not shown in free practice */}
+              {!selectedQuestion?.isFreePractice &&
+                (!isSubmitted ? (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={!selectedQuestion || isSubmitting}
+                    className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
+                  >
+                    {isSubmitting ? "⏳ Submitting..." : "📤 Submit"}
+                  </button>
+                ) : !isEditing ? (
+                  <button
+                    onClick={handleEdit}
+                    className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
+                  >
+                    ✏️ Edit
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={isSubmitting}
+                    className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
+                  >
+                    {isSubmitting ? "⏳ Submitting..." : "📤 Re-Submit"}
+                  </button>
+                ))}
             </div>
           </div>
 

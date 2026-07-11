@@ -167,7 +167,7 @@ router.get(
         return res.status(400).json({ error: "Invalid language" });
       }
       const result = await pool.query(
-        `SELECT id, title, description, starter_code, language, points, time_limit, memory_limit
+        `SELECT id, title, description, starter_code, language, points, time_limit, memory_limit, category
          FROM questions WHERE language = $1 AND is_active = true ORDER BY id`,
         [language],
       );
