@@ -116,15 +116,13 @@ CREATE INDEX idx_plagiarism_question ON plagiarism_results(question_id);
 
 -- ============================================
 -- TEACHERS (password: Teacher@123)
--- All currently assigned Semester II for now; Semester I teachers will be
+-- Semester II currently has a single teacher assigned. Prof. Johnson,
+-- Prof. Williams, Prof. Brown, and Prof. Davis were removed to keep
+-- Semester II to one teacher account; Semester I teachers will be
 -- added when the Teacher role work begins.
 -- ============================================
 INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
-('teacher1', '$2b$10$9i0RcAXJCgu/V78HMqXMyO0tsA50pTP4Kv6DErUUR1BNUPfd2Fcky', 'Prof. Smith', 'teacher', 'II'),
-('teacher2', '$2b$10$9i0RcAXJCgu/V78HMqXMyO0tsA50pTP4Kv6DErUUR1BNUPfd2Fcky', 'Prof. Johnson', 'teacher', 'II'),
-('teacher3', '$2b$10$9i0RcAXJCgu/V78HMqXMyO0tsA50pTP4Kv6DErUUR1BNUPfd2Fcky', 'Prof. Williams', 'teacher', 'II'),
-('teacher4', '$2b$10$9i0RcAXJCgu/V78HMqXMyO0tsA50pTP4Kv6DErUUR1BNUPfd2Fcky', 'Prof. Brown', 'teacher', 'II'),
-('teacher5', '$2b$10$9i0RcAXJCgu/V78HMqXMyO0tsA50pTP4Kv6DErUUR1BNUPfd2Fcky', 'Prof. Davis', 'teacher', 'II');
+('teacher1', '$2b$10$9i0RcAXJCgu/V78HMqXMyO0tsA50pTP4Kv6DErUUR1BNUPfd2Fcky', 'Sushant Sir', 'teacher', 'II');
 -- ============================================
 -- OPTIONAL: Sample Semester I (C) teacher for testing the First Semester
 -- teacher flow end-to-end. Password: Teacher@123 (hash freshly generated
