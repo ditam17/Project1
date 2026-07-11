@@ -47,14 +47,16 @@ const QuestionGroup = ({
               selectedQuestion?.id === q.id
                 ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
                 : darkMode
-                ? "border-gray-700 hover:bg-gray-700"
-                : "border-gray-200 hover:bg-gray-50"
+                  ? "border-gray-700 hover:bg-gray-700"
+                  : "border-gray-200 hover:bg-gray-50"
             }`}
           >
             <div className="flex items-center justify-between">
               <span className="font-semibold">{q.title}</span>
               {isQSubmitted && (
-                <span className="text-green-500 text-lg" title="Submitted">✅</span>
+                <span className="text-green-500 text-lg" title="Submitted">
+                  ✅
+                </span>
               )}
             </div>
             <div className="text-sm text-gray-500 mt-1">
@@ -89,11 +91,15 @@ const StudentPortal = () => {
     total_questions: 0,
   });
   const [terminalReady, setTerminalReady] = useState(false);
-  const [pasteWarning, setPasteWarning] = useState(false);
+  const [clipboardWarning, setClipboardWarning] = useState(""); // "" | "paste" | "copy"
   const [submissionStatus, setSubmissionStatus] = useState({}); // NEW: Track submitted questions
   const [isSubmitted, setIsSubmitted] = useState(false); // NEW: Current question submitted state
   const [isEditing, setIsEditing] = useState(false); // NEW: Edit mode after submission
   const [terminalOutput, setTerminalOutput] = useState(""); // NEW: Accumulate terminal output
+  // Submit only becomes available after the current code has been run in the
+  // terminal and finished cleanly (compiled, exited with code 0). Any edit to
+  // the code, or switching questions, clears this until the next clean run.
+  const [canSubmit, setCanSubmit] = useState(false);
 
   const terminalRef = useRef(null);
   const terminalInstance = useRef(null);
@@ -102,18 +108,56 @@ const StudentPortal = () => {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const terminalOutputRef = useRef(""); // Ref to accumulate output without re-renders
+  // The Monaco editor instance mounts once and persists across question
+  // switches, so its copy/paste key handlers close over stale state if they
+  // read `selectedQuestion` directly. This ref is kept current instead.
+  const isFreePracticeRef = useRef(false);
+  useEffect(() => {
+    isFreePracticeRef.current = !!selectedQuestion?.isFreePractice;
+  }, [selectedQuestion]);
+  // Monaco's addCommand shortcuts are registered once on mount, so calling
+  // handleRunCode/handleSaveDraft/handleSubmit/handleKillProgram directly
+  // would freeze them to their first-render closures (stale selectedQuestion,
+  // isRunning, etc). These refs are refreshed every render so the shortcuts
+  // always call the current version — the handlers keep their own existing
+  // guards, so this only adds a key trigger, it doesn't change what's allowed.
+  const handleRunCodeRef = useRef(() => {});
+  const handleSaveDraftRef = useRef(() => {});
+  const handleSubmitRef = useRef(() => {});
+  const handleKillProgramRef = useRef(() => {});
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const token = localStorage.getItem("token");
 
   // ============================================
-  // COPY-PASTE PREVENTION
+  // COPY-PASTE PREVENTION (Assignments & Extra Practice only —
+  // Free Practice is exempt and behaves like a normal editor)
   // ============================================
+  // Free Practice is handled with a Monaco context key + "when" clause
+  // rather than intercept-and-replay: the override command only matches
+  // when `clipboardRestricted` is true, so in Free Practice the keybinding
+  // isn't claimed at all and Monaco's real built-in paste/copy/cut fires
+  // natively. (Replaying paste programmatically doesn't work reliably —
+  // browsers block scripted paste as a clipboard-security measure.)
+  const clipboardRestrictedKeyRef = useRef(null);
+  useEffect(() => {
+    clipboardRestrictedKeyRef.current?.set(!selectedQuestion?.isFreePractice);
+  }, [selectedQuestion]);
+
   const handleEditorDidMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    // Block Ctrl+V / Cmd+V via keydown
+    const restrictedKey = editor.createContextKey(
+      "clipboardRestricted",
+      !selectedQuestion?.isFreePractice,
+    );
+    clipboardRestrictedKeyRef.current = restrictedKey;
+
+    // Block Ctrl+V / Cmd+V / Shift+Insert / Ctrl+C / Ctrl+X via keydown
+    // (belt-and-suspenders alongside the addCommand overrides below).
     editor.onKeyDown((e) => {
+      if (!restrictedKey.get()) return;
+
       const keyCode = e.keyCode;
       const ctrl = e.ctrlKey;
       const meta = e.metaKey;
@@ -121,40 +165,110 @@ const StudentPortal = () => {
       if ((ctrl || meta) && keyCode === monaco.KeyCode.KeyV) {
         e.preventDefault();
         e.stopPropagation();
-        showPasteWarning();
+        showClipboardWarning("paste");
         return false;
       }
 
       if (e.shiftKey && keyCode === monaco.KeyCode.Insert) {
         e.preventDefault();
         e.stopPropagation();
-        showPasteWarning();
+        showClipboardWarning("paste");
+        return false;
+      }
+
+      if (
+        (ctrl || meta) &&
+        (keyCode === monaco.KeyCode.KeyC || keyCode === monaco.KeyCode.KeyX)
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        showClipboardWarning("copy");
         return false;
       }
     });
 
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => {
-      showPasteWarning();
-      return null;
-    });
+    // Each override only activates "when" clipboardRestricted is true. When
+    // it's false (Free Practice), the keybinding isn't claimed at all and
+    // Monaco's built-in clipboard command handles the key press normally.
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV,
+      () => showClipboardWarning("paste"),
+      "clipboardRestricted",
+    );
+    editor.addCommand(
+      monaco.KeyMod.Shift | monaco.KeyCode.Insert,
+      () => showClipboardWarning("paste"),
+      "clipboardRestricted",
+    );
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC,
+      () => showClipboardWarning("copy"),
+      "clipboardRestricted",
+    );
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX,
+      () => showClipboardWarning("copy"),
+      "clipboardRestricted",
+    );
 
-    editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Insert, () => {
-      showPasteWarning();
-      return null;
+    // ============================================
+    // KEYBOARD SHORTCUTS (all sections — same actions the buttons already
+    // trigger, so no new functionality, just faster access to it)
+    // ============================================
+    // Run: Ctrl/Cmd + Enter
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+      handleRunCodeRef.current();
     });
+    // Save Draft: Ctrl/Cmd + S (also stops the browser's Save Page dialog
+    // while the editor is focused; handleSaveDraft already no-ops in Free
+    // Practice / when nothing is selected, same as the button)
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      handleSaveDraftRef.current();
+    });
+    // Submit / Re-Submit: Ctrl/Cmd + Shift + Enter
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter,
+      () => {
+        handleSubmitRef.current();
+      },
+    );
+    // Stop running program: Ctrl/Cmd + Shift + X
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyX,
+      () => {
+        handleKillProgramRef.current();
+      },
+    );
 
     editor.updateOptions({ contextmenu: false });
   };
 
-  const showPasteWarning = () => {
-    setPasteWarning(true);
-    setTimeout(() => setPasteWarning(false), 3000);
+  const showClipboardWarning = (action) => {
+    setClipboardWarning(action);
+    setTimeout(() => setClipboardWarning(""), 3000);
   };
 
   const handleContainerPaste = (e) => {
+    if (isFreePracticeRef.current) return;
     e.preventDefault();
     e.stopPropagation();
-    showPasteWarning();
+    showClipboardWarning("paste");
+    return false;
+  };
+
+  const handleContainerCopy = (e) => {
+    if (isFreePracticeRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    showClipboardWarning("copy");
+    return false;
+  };
+
+  const handleContainerCut = (e) => {
+    if (isFreePracticeRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    showClipboardWarning("copy");
     return false;
   };
 
@@ -358,10 +472,13 @@ const StudentPortal = () => {
     terminalOutputRef.current = "";
     setIsSubmitted(false);
     setIsEditing(false);
+    setCanSubmit(false);
     if (terminalInstance.current) {
       terminalInstance.current.clear();
       terminalInstance.current.writeln("● Interactive Terminal Ready");
-      terminalInstance.current.writeln("Click '▶️ Run Code' to start your program.");
+      terminalInstance.current.writeln(
+        "Click '▶️ Run Code' to start your program.",
+      );
     }
   };
 
@@ -371,6 +488,7 @@ const StudentPortal = () => {
 
     const term = terminalInstance.current;
     setIsRunning(true);
+    setCanSubmit(false);
     term.clear();
     term.writeln("⏳ Compiling and starting program...");
     term.writeln("");
@@ -400,7 +518,8 @@ const StudentPortal = () => {
       term.writeln("✅ Program started!");
       term.writeln("──────────────────────────────────────");
       term.writeln("");
-      terminalOutputRef.current += "✅ Program started!\n──────────────────────────────────────\n\n";
+      terminalOutputRef.current +=
+        "✅ Program started!\n──────────────────────────────────────\n\n";
     });
 
     socket.on("output", (data) => {
@@ -415,6 +534,11 @@ const StudentPortal = () => {
       terminalOutputRef.current += `\n──────────────────────────────────────\n🏁 Program exited with code: ${data.code}\n`;
       setIsRunning(false);
       setTerminalOutput(terminalOutputRef.current);
+      // A clean exit (code 0) only confirms the program compiled and ran
+      // without crashing — it does NOT mean the output matched the
+      // expected test cases. Actual grading still happens server-side
+      // when Submit is clicked. This just gates whether Submit shows up.
+      setCanSubmit(data.code === 0);
       socket.disconnect();
     });
 
@@ -424,6 +548,7 @@ const StudentPortal = () => {
       terminalOutputRef.current += `\n❌ Error: ${data.message}\n`;
       setIsRunning(false);
       setTerminalOutput(terminalOutputRef.current);
+      setCanSubmit(false);
       socket.disconnect();
     });
 
@@ -436,6 +561,7 @@ const StudentPortal = () => {
       terminalOutputRef.current += `❌ Connection error: ${err.message}\n`;
       setIsRunning(false);
       setTerminalOutput(terminalOutputRef.current);
+      setCanSubmit(false);
     });
   };
 
@@ -452,6 +578,11 @@ const StudentPortal = () => {
   // Submit code with AUTO-GRADING + terminal output
   const handleSubmit = async () => {
     if (!selectedQuestion || selectedQuestion.isFreePractice) return;
+    // Mirrors exactly what makes the Submit/Re-Submit button visible —
+    // needed because the Ctrl/Cmd+Shift+Enter shortcut calls this directly,
+    // bypassing the button's disabled/hidden state entirely.
+    if (!canSubmit) return;
+    if (isSubmitted && !isEditing) return;
     setIsSubmitting(true);
     setOutput("Submitting...");
     setTestResults(null);
@@ -507,6 +638,15 @@ const StudentPortal = () => {
       alert("Failed to save draft");
     }
   };
+
+  // Runs after every render so the Monaco keyboard shortcuts (registered
+  // once on mount) always call the current handler, not a stale closure.
+  useEffect(() => {
+    handleRunCodeRef.current = handleRunCode;
+    handleSaveDraftRef.current = handleSaveDraft;
+    handleSubmitRef.current = handleSubmit;
+    handleKillProgramRef.current = handleKillProgram;
+  });
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -569,7 +709,9 @@ const StudentPortal = () => {
       </header>
 
       {/* Locked language badge — determined by the student's semester, not user-selectable */}
-      <div className={`${darkMode ? "bg-gray-800" : "bg-white"} px-6 py-3 shadow-sm`}>
+      <div
+        className={`${darkMode ? "bg-gray-800" : "bg-white"} px-6 py-3 shadow-sm`}
+      >
         <div className="flex gap-3">
           <span className="px-4 py-2 rounded-lg font-medium bg-blue-500 text-white shadow-md">
             <span className="mr-2">{languageBadge.icon}</span>
@@ -587,13 +729,15 @@ const StudentPortal = () => {
           {/* Free Practice - always available, never graded */}
           <h2 className="text-lg font-bold mb-3">🧑‍💻 Practice Space</h2>
           <button
-            onClick={() => handleQuestionSelect(makeFreePracticeEntry(language))}
+            onClick={() =>
+              handleQuestionSelect(makeFreePracticeEntry(language))
+            }
             className={`w-full text-left p-4 rounded-lg border transition-all mb-6 ${
               selectedQuestion?.isFreePractice
                 ? "border-purple-500 bg-purple-50 dark:bg-purple-900/20"
                 : darkMode
-                ? "border-gray-700 hover:bg-gray-700"
-                : "border-gray-200 hover:bg-gray-50"
+                  ? "border-gray-700 hover:bg-gray-700"
+                  : "border-gray-200 hover:bg-gray-50"
             }`}
           >
             <div className="font-semibold">Free Practice</div>
@@ -650,10 +794,12 @@ const StudentPortal = () => {
 
         {/* Center - Code Editor */}
         <div className="flex-1 flex flex-col">
-          {/* Paste Warning Banner */}
-          {pasteWarning && (
+          {/* Clipboard Restriction Banner */}
+          {clipboardWarning && (
             <div className="bg-red-500 text-white px-4 py-2 text-center font-semibold animate-pulse z-50">
-              🚫 Copy-paste is disabled! Please type your code manually.
+              {clipboardWarning === "paste"
+                ? "🚫 Paste is disabled here! Please type your code manually."
+                : "🚫 Copy is disabled here! Free Practice is the only place code can be copied out."}
             </div>
           )}
 
@@ -663,7 +809,9 @@ const StudentPortal = () => {
           >
             <div className="flex items-center gap-2">
               <span className="font-semibold">
-                {selectedQuestion ? selectedQuestion.title : "Select a question"}
+                {selectedQuestion
+                  ? selectedQuestion.title
+                  : "Select a question"}
               </span>
               {selectedQuestion && (
                 <span className="text-sm text-gray-500">
@@ -691,6 +839,7 @@ const StudentPortal = () => {
                 <button
                   onClick={handleSaveDraft}
                   disabled={!selectedQuestion}
+                  title="Save Draft (Ctrl/Cmd+S)"
                   className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 disabled:opacity-50 text-sm"
                 >
                   💾 Save Draft
@@ -699,6 +848,7 @@ const StudentPortal = () => {
               <button
                 onClick={handleRunCode}
                 disabled={!selectedQuestion || isRunning}
+                title="Run Code (Ctrl/Cmd+Enter)"
                 className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50 text-sm"
               >
                 {isRunning ? "⏳ Running..." : "▶️ Run Code"}
@@ -706,22 +856,28 @@ const StudentPortal = () => {
               {isRunning && (
                 <button
                   onClick={handleKillProgram}
+                  title="Stop (Ctrl/Cmd+Shift+X)"
                   className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
                 >
                   ⏹ Stop
                 </button>
               )}
 
-              {/* Submit / Submitted / Edit buttons - not shown in free practice */}
+              {/* Submit / Submitted / Edit buttons - not shown in free practice.
+                  Submit and Re-Submit only appear after a clean Run; Edit
+                  (which just unlocks the editor, doesn't submit) always shows. */}
               {!selectedQuestion?.isFreePractice &&
                 (!isSubmitted ? (
-                  <button
-                    onClick={handleSubmit}
-                    disabled={!selectedQuestion || isSubmitting}
-                    className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
-                  >
-                    {isSubmitting ? "⏳ Submitting..." : "📤 Submit"}
-                  </button>
+                  canSubmit && (
+                    <button
+                      onClick={handleSubmit}
+                      disabled={!selectedQuestion || isSubmitting}
+                      title="Submit (Ctrl/Cmd+Shift+Enter)"
+                      className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
+                    >
+                      {isSubmitting ? "⏳ Submitting..." : "📤 Submit"}
+                    </button>
+                  )
                 ) : !isEditing ? (
                   <button
                     onClick={handleEdit}
@@ -730,27 +886,50 @@ const StudentPortal = () => {
                     ✏️ Edit
                   </button>
                 ) : (
-                  <button
-                    onClick={handleSubmit}
-                    disabled={isSubmitting}
-                    className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
-                  >
-                    {isSubmitting ? "⏳ Submitting..." : "📤 Re-Submit"}
-                  </button>
+                  canSubmit && (
+                    <button
+                      onClick={handleSubmit}
+                      disabled={isSubmitting}
+                      title="Submit (Ctrl/Cmd+Shift+Enter)"
+                      className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
+                    >
+                      {isSubmitting ? "⏳ Submitting..." : "📤 Re-Submit"}
+                    </button>
+                  )
                 ))}
             </div>
           </div>
 
-          {/* Monaco Editor with Paste Prevention */}
+          {/* Shortcuts hint - contextual per section, purely informational */}
+          {selectedQuestion && (
+            <div
+              className={`px-4 py-1 text-xs ${darkMode ? "bg-gray-900 text-gray-500" : "bg-gray-50 text-gray-400"} border-b ${darkMode ? "border-gray-700" : "border-gray-200"}`}
+            >
+              ⌨️ Ctrl/Cmd+Enter Run
+              {!selectedQuestion.isFreePractice &&
+                " · Ctrl/Cmd+S Save Draft · Ctrl/Cmd+Shift+Enter Submit"}
+              {isRunning && " · Ctrl/Cmd+Shift+X Stop"}
+              {selectedQuestion.isFreePractice
+                ? " · Ctrl/Cmd+C/V/X Copy/Paste/Cut enabled"
+                : " · Copy/Paste disabled here"}
+            </div>
+          )}
+
+          {/* Monaco Editor with Copy-Paste Restriction (Assignments/Extra Practice only) */}
           <div
             className="flex-1 relative"
             onPaste={handleContainerPaste}
+            onCopy={handleContainerCopy}
+            onCut={handleContainerCut}
           >
             <Editor
               height="100%"
               language={getMonacoLanguage(language)}
               value={code}
-              onChange={(value) => setCode(value || "")}
+              onChange={(value) => {
+                setCode(value || "");
+                setCanSubmit(false);
+              }}
               onMount={handleEditorDidMount}
               theme={darkMode ? "vs-dark" : "light"}
               options={{
