@@ -73,7 +73,7 @@ const Login = () => {
   const fillDemo = () => {
     if (role === "student" && semester === "II") {
       setLoginId("alisha.suwal");
-      setPassword("Student@123");
+      setPassword("w74pdAZFcJ");
     } else if (role === "student" && semester === "I") {
       setLoginId("sem1.demo");
       setPassword("Student@123");
@@ -93,18 +93,6 @@ const Login = () => {
     (role === "student" && (semester === "I" || semester === "II")) ||
     (role === "teacher" && (semester === "I" || semester === "II")) ||
     role === "admin";
-  // No demo teacher exists for Semester I yet — hide the button rather
-  // than let it fill in credentials that will fail semester validation.
-
-  {
-    hasDemo && (
-      <div className="mt-4 text-center text-sm text-gray-600">
-        <button onClick={fillDemo} className="underline">
-          Fill demo credentials
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -157,11 +145,13 @@ const Login = () => {
           </button>
         </form>
 
-        <div className="mt-4 text-center text-sm text-gray-600">
-          <button onClick={fillDemo} className="underline">
-            Fill demo credentials
-          </button>
-        </div>
+        {hasDemo && (
+          <div className="mt-4 text-center text-sm text-gray-600">
+            <button onClick={fillDemo} className="underline">
+              Fill demo credentials
+            </button>
+          </div>
+        )}
 
         <button
           onClick={() => navigate(-1)}

@@ -118,7 +118,10 @@ function setupSocketIO(httpServer) {
     if (!token) return next(new Error("Authentication required"));
     try {
       const jwt = require("jsonwebtoken");
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+        issuer: "coding-platform",
+        audience: "coding-platform-users",
+      });
       socket.user = decoded;
       next();
     } catch (err) {

@@ -1,8 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import RoleSelect from "./components/RoleSelect/RoleSelect";
-import SemesterSelect from "./components/Student/SemesterSelect";
-import TeacherSemesterSelect from "./components/Teacher/SemesterSelect";
+import SemesterSelect from "./components/Common/SemesterSelect";
 import Login from "./components/Login/Login";
 import StudentPortal from "./components/Student/StudentPortal";
 import TeacherDashboard from "./components/Teacher/TeacherDashboard";
@@ -31,7 +30,10 @@ function App() {
         {/* Landing: choose Student / Teacher / College Administrator */}
         <Route path="/" element={<RoleSelect />} />
         {/* Student flow: role select -> semester select -> login -> portal */}
-        <Route path="/student/semester" element={<SemesterSelect />} />
+        <Route
+          path="/student/semester"
+          element={<SemesterSelect role="student" />}
+        />
         <Route path="/student/login" element={<Login />} />
         <Route
           path="/student"
@@ -42,7 +44,10 @@ function App() {
           }
         />
         {/* Teacher flow: role select -> semester select -> login -> dashboard */}
-        <Route path="/teacher/semester" element={<TeacherSemesterSelect />} />
+        <Route
+          path="/teacher/semester"
+          element={<SemesterSelect role="teacher" />}
+        />
         <Route path="/teacher/login" element={<Login />} />
         <Route
           path="/teacher"
@@ -52,8 +57,6 @@ function App() {
             </PrivateRoute>
           }
         />
-        import AdminDashboard from "./components/Admin/AdminDashboard"; //
-        remove the ComingSoon import if nothing else uses it // ...
         {/* College Administrator flow: login directly, no semester step */}
         <Route path="/admin/login" element={<Login />} />
         <Route

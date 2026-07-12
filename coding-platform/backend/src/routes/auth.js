@@ -129,7 +129,7 @@ router.post("/login", async (req, res) => {
       },
       process.env.JWT_SECRET,
       {
-        expiresIn: "2h",
+        expiresIn: process.env.JWT_EXPIRES_IN || "2h",
         issuer: "coding-platform",
         audience: "coding-platform-users",
       },

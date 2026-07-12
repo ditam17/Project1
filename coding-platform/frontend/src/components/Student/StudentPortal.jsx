@@ -722,7 +722,7 @@ const StudentPortal = () => {
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    window.location.href = "/login";
+    window.location.href = "/";
   };
 
   const languageBadge =
@@ -1003,7 +1003,10 @@ const StudentPortal = () => {
                     setTestFiles((prev) =>
                       prev.length >= 5
                         ? prev
-                        : [...prev, { name: `data${prev.length + 1}.txt`, content: "" }],
+                        : [
+                            ...prev,
+                            { name: `data${prev.length + 1}.txt`, content: "" },
+                          ],
                     )
                   }
                   disabled={testFiles.length >= 5}
@@ -1054,7 +1057,10 @@ const StudentPortal = () => {
                       this file — only shown once we have a result, and only
                       if it differs from what's typed above (fopen "w"/"a"
                       would change it; a program that only reads it won't). */}
-                  {Object.prototype.hasOwnProperty.call(testFileOutputs, f.name) && (
+                  {Object.prototype.hasOwnProperty.call(
+                    testFileOutputs,
+                    f.name,
+                  ) && (
                     <div className="flex gap-2 items-start mt-1 ml-[8.5rem]">
                       <span className="text-xs pt-1 opacity-70 w-10 shrink-0">
                         after run:
@@ -1077,7 +1083,8 @@ const StudentPortal = () => {
               ))}
               {testFiles.length === 0 && (
                 <div className="italic opacity-70">
-                  No test files attached — add one if your code uses fopen() to read a file.
+                  No test files attached — add one if your code uses fopen() to
+                  read a file.
                 </div>
               )}
             </div>
@@ -1147,7 +1154,9 @@ const StudentPortal = () => {
             disabled={isDownloadingPdf}
             className="w-full mb-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-medium flex items-center justify-center gap-2"
           >
-            {isDownloadingPdf ? "Generating PDF..." : "📄 Download All Submissions (PDF)"}
+            {isDownloadingPdf
+              ? "Generating PDF..."
+              : "📄 Download All Submissions (PDF)"}
           </button>
 
           {submissions.length > 0 && (

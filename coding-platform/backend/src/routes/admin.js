@@ -26,7 +26,13 @@ const buildSemesterData = async (semester) => {
     `SELECT u.id, u.login_id, u.name, u.last_login, u.created_at,
       COUNT(DISTINCT s.question_id) as attempted_count,
       COALESCE(SUM(s.score), 0) as total_score,
-      (SELECT COUNT(*) FROM questions WHERE language = $1 AND is_active = true) as total_questions
+      (SELECT COUNT(*) FROM questions WHERE language = $1 AND is_active = true) as total_questions,
+      CASE
+        WHEN (SELECT COUNT(*) FROM questions WHERE language = $1 AND is_active = true) > 0
+         AND COUNT(DISTINCT s.question_id) = (SELECT COUNT(*) FROM questions WHERE language = $1 AND is_active = true)
+        THEN 'completed'
+        ELSE 'pending'
+      END as status
     FROM users u
     LEFT JOIN submissions s ON s.student_id = u.id AND s.status = 'submitted'
       AND s.question_id IN (SELECT id FROM questions WHERE language = $1 AND is_active = true)
@@ -50,6 +56,9 @@ const buildSemesterData = async (semester) => {
   return {
     language,
     totalQuestions: parseInt(questionCount.rows[0].count),
+    studentCount: students.rows.length,
+    completedCount: students.rows.filter((s) => s.status === "completed")
+      .length,
     students: students.rows,
     teachers: teachers.rows,
   };
@@ -68,17 +77,8 @@ router.get(
         buildSemesterData("II"),
       ]);
 
-      const totalStudents = await pool.query(
-        "SELECT COUNT(*) FROM users WHERE role = 'student'",
-      );
-      const totalTeachers = await pool.query(
-        "SELECT COUNT(*) FROM users WHERE role = 'teacher'",
-      );
       const totalQuestions = await pool.query(
         "SELECT COUNT(*) FROM questions WHERE is_active = true",
-      );
-      const totalSubmissions = await pool.query(
-        "SELECT COUNT(*) FROM submissions WHERE status = 'submitted'",
       );
 
       res.json({
@@ -87,10 +87,7 @@ router.get(
           II: semesterII,
         },
         stats: {
-          totalStudents: parseInt(totalStudents.rows[0].count),
-          totalTeachers: parseInt(totalTeachers.rows[0].count),
           totalQuestions: parseInt(totalQuestions.rows[0].count),
-          totalSubmissions: parseInt(totalSubmissions.rows[0].count),
         },
       });
     } catch (err) {

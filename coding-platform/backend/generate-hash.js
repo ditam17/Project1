@@ -1,8 +1,9 @@
 // generate-hash.js
+// generate-hash.js
+require("dotenv").config();
 const bcrypt = require("bcryptjs");
 
-const SALT_ROUNDS = 12;
-
+const SALT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS, 10) || 12;
 const label = process.argv[2] || "password";
 const password = process.argv[3] || process.argv[2];
 

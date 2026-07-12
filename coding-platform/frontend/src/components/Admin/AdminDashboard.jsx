@@ -101,19 +101,15 @@ const AdminDashboard = () => {
         </button>
       </header>
 
-      {/* Platform-wide stats */}
-      <div className="grid grid-cols-4 gap-4 p-6">
+      {/* Stats for the currently selected semester (not combined across both) */}
+      <div className="grid grid-cols-3 gap-4 p-6">
         <div className="bg-white p-4 rounded-lg shadow">
           <div className="text-2xl font-bold">
-            {overview.stats.totalStudents}
+            {semesterData?.studentCount ?? 0}
           </div>
-          <div className="text-sm text-gray-500">Total Students (both semesters)</div>
-        </div>
-        <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-2xl font-bold">
-            {overview.stats.totalTeachers}
+          <div className="text-sm text-gray-500">
+            Total Students — Semester {meta.label}
           </div>
-          <div className="text-sm text-gray-500">Total Teachers (both semesters)</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
           <div className="text-2xl font-bold">
@@ -125,13 +121,17 @@ const AdminDashboard = () => {
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
           <div className="text-2xl font-bold">
-            {overview.stats.totalSubmissions}
+            {semesterData?.completedCount ?? 0}
           </div>
-          <div className="text-sm text-gray-500">Total Submissions (both semesters)</div>
+          <div className="text-sm text-gray-500">
+            Completed — Semester {meta.label} ({semesterData?.studentCount ?? 0}{" "}
+            students total)
+          </div>
         </div>
       </div>
       <p className="px-6 -mt-3 mb-3 text-xs text-gray-400">
-        {overview.stats.totalQuestions} active questions across both semesters combined
+        {overview.stats.totalQuestions} active questions across both semesters
+        combined
       </p>
 
       {/* Semester tabs */}

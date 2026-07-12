@@ -6,22 +6,35 @@ const SEMESTERS = [
   { id: "II", label: "Second (II)", language: "C++ Programming", icon: "🟣" },
 ];
 
-// Teacher picks their semester, then moves to the login page for that
-// specific semester. The backend enforces that only teachers who actually
-// belong to that semester can log in here.
-const TeacherSemesterSelect = () => {
+const ROLE_COPY = {
+  student: {
+    title: "Student Login",
+    loginPath: "/student/login",
+    footnote: "The project is currently focused on Semester II (C++).",
+  },
+  teacher: {
+    title: "Teacher Login",
+    loginPath: "/teacher/login",
+    footnote: null,
+  },
+};
+
+// Shared by both the Student and Teacher flows: the learner/teacher picks
+// their semester here, then moves on to the login page for that specific
+// role + semester. The backend enforces that only accounts actually
+// belonging to that semester can log in there.
+const SemesterSelect = ({ role }) => {
   const navigate = useNavigate();
+  const copy = ROLE_COPY[role];
 
   const choose = (semesterId) => {
-    navigate("/teacher/login", {
-      state: { role: "teacher", semester: semesterId },
-    });
+    navigate(copy.loginPath, { state: { role, semester: semesterId } });
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
       <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold text-center mb-1">Teacher Login</h1>
+        <h1 className="text-2xl font-bold text-center mb-1">{copy.title}</h1>
         <p className="text-center text-gray-500 mb-6">Select your semester</p>
 
         <div className="space-y-4">
@@ -42,6 +55,12 @@ const TeacherSemesterSelect = () => {
           ))}
         </div>
 
+        {copy.footnote && (
+          <p className="text-center text-xs text-gray-400 mt-6">
+            {copy.footnote}
+          </p>
+        )}
+
         <button
           onClick={() => navigate("/")}
           className="w-full mt-4 text-sm text-gray-500 underline"
@@ -53,4 +72,4 @@ const TeacherSemesterSelect = () => {
   );
 };
 
-export default TeacherSemesterSelect;
+export default SemesterSelect;
