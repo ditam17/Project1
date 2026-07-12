@@ -19,50 +19,165 @@ class InteractiveTerminalService {
   }
 
   /**
-   * Start a new interactive session
-   * Compiles the code, starts a Docker container, and returns a session ID
+   * Writes student-attached files into the session's /code directory so
+   * fopen()/ifstream-style file I/O has something real to read. Filenames
+   * are reduced to their basename (path.basename) to prevent traversal,
+   * and reserved names can't be clobbered.
    */
-  async startSession(code, language) {
+  async writeAttachedFiles(tempDir, files) {
+    const reserved = new Set([
+      "main.c",
+      "main.cpp",
+      "Main.java",
+      "main.py",
+      "program",
+      "input.txt",
+    ]);
+    for (const file of files || []) {
+      const safeName = path.basename(file.name);
+      if (!safeName || reserved.has(safeName)) continue;
+      await fs.writeFile(path.join(tempDir, safeName), file.content ?? "");
+    }
+  }
+
+  /**
+   * Start a session, reusing an already-running container when possible.
+   * If `reuseSessionId` points at a live container for the same language,
+   * skip `docker run` entirely and just recompile + respawn inside it —
+   * this is what actually removes the per-Run latency, since container
+   * startup (not compilation) was the dominant cost.
+   */
+  async startSession(code, language, reuseSessionId = null, files = []) {
+    if (reuseSessionId) {
+      const existing = this.sessions.get(reuseSessionId);
+      if (existing && existing.language === language) {
+        return this.restartInContainer(reuseSessionId, code, language, files);
+      }
+      // Language changed or session died — tear down before making a new one.
+      if (existing) await this.killSession(reuseSessionId);
+    }
+    return this.startSession_fresh(code, language, files);
+  }
+
+  /**
+   * Recompile and respawn inside an already-running container. No
+   * docker run/rm round trip — just an exec, cutting per-run latency down
+   * to roughly the compile time.
+   */
+  async restartInContainer(sessionId, code, language, files = []) {
+    const session = this.sessions.get(sessionId);
+    if (!session)
+      return { success: false, sessionId: null, error: "Session not found" };
+
+    // Kill any process still running from the previous run.
+    if (session.process && session.isRunning) {
+      try {
+        session.process.kill("SIGKILL");
+      } catch (_) {}
+    }
+
+    const { filename, compileCmd, runCmd } = this.commandsFor(language);
+    await fs.writeFile(path.join(session.tempDir, filename), code);
+    await this.writeAttachedFiles(session.tempDir, files);
+
+    if (compileCmd) {
+      const compileResult = await this.execPromise(
+        `docker exec ${session.containerId} sh -c "${compileCmd}"`,
+      );
+      if (
+        compileResult.stdout.includes("error:") ||
+        compileResult.stderr.includes("error:")
+      ) {
+        return {
+          success: false,
+          sessionId: null,
+          error:
+            "Compilation Error: " +
+            (compileResult.stdout || compileResult.stderr),
+        };
+      }
+    }
+
+    const programProcess = spawn(
+      "docker",
+      [
+        "exec",
+        "-i",
+        session.containerId,
+        "sh",
+        "-c",
+        `script -q /dev/null -c "${runCmd}"`,
+      ],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+
+    session.process = programProcess;
+    session.isRunning = true;
+    session.outputBuffer = "";
+    session.allOutput = "";
+    session.inputBuffer = "";
+
+    return { success: true, sessionId, error: null };
+  }
+
+  /**
+   * Language -> filename/compile/run command mapping, factored out so both
+   * fresh-container and warm-reuse paths stay in sync.
+   */
+  commandsFor(language) {
+    switch (language) {
+      case "c":
+        return {
+          filename: "main.c",
+          compileCmd: "gcc -o program main.c -O2 -Wall 2>&1",
+          runCmd: "./program",
+        };
+      case "cpp":
+        return {
+          filename: "main.cpp",
+          compileCmd: "g++ -o program main.cpp -O2 -Wall -std=c++17 2>&1",
+          runCmd: "./program",
+        };
+      case "python":
+        return {
+          filename: "main.py",
+          compileCmd: null,
+          runCmd: "python3 main.py",
+        };
+      case "java":
+        return {
+          filename: "Main.java",
+          compileCmd: "javac Main.java 2>&1",
+          runCmd: "java Main",
+        };
+      default:
+        throw new Error("Unsupported language");
+    }
+  }
+
+  /**
+   * Original path: create a brand-new container. Used for the first run of
+   * a terminal session, or when the previous container needed replacing.
+   */
+  async startSession_fresh(code, language, files = []) {
     const sessionId = uuidv4();
     const tempDir = path.join(this.baseTempDir, `coding_${sessionId}`);
 
     try {
       await fs.ensureDir(tempDir);
 
-      let filename, compileCmd, dockerImage, runCmd;
-
-      switch (language) {
-        case "c":
-          filename = "main.c";
-          compileCmd = `gcc -o program ${filename} -O2 -Wall 2>&1`;
-          dockerImage = "gcc:latest";
-          runCmd = `./program`;
-          break;
-        case "cpp":
-          filename = "main.cpp";
-          compileCmd = `g++ -o program ${filename} -O2 -Wall -std=c++17 2>&1`;
-          dockerImage = "gcc:latest";
-          runCmd = `./program`;
-          break;
-        case "python":
-          filename = "main.py";
-          compileCmd = null;
-          dockerImage = "python:3.11-slim";
-          runCmd = `python3 ${filename}`;
-          break;
-        case "java":
-          filename = "Main.java";
-          compileCmd = `javac ${filename} 2>&1`;
-          dockerImage = "eclipse-temurin:17-jdk-alpine";
-          runCmd = `java Main`;
-          break;
-        default:
-          throw new Error("Unsupported language");
-      }
+      const { filename, compileCmd, runCmd } = this.commandsFor(language);
+      const dockerImage = {
+        c: "gcc:latest",
+        cpp: "gcc:latest",
+        python: "python:3.11-slim",
+        java: "eclipse-temurin:17-jdk-alpine",
+      }[language];
 
       // Write source code
       await fs.writeFile(path.join(tempDir, filename), code);
       await fs.writeFile(path.join(tempDir, "input.txt"), "");
+      await this.writeAttachedFiles(tempDir, files);
 
       // OPTIMIZATION: Use alpine-based images for faster startup
       // Start container with sleep to keep it alive

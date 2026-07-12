@@ -96,6 +96,10 @@ const StudentPortal = () => {
   const [isSubmitted, setIsSubmitted] = useState(false); // NEW: Current question submitted state
   const [isEditing, setIsEditing] = useState(false); // NEW: Edit mode after submission
   const [terminalOutput, setTerminalOutput] = useState(""); // NEW: Accumulate terminal output
+  // Small text files the student attaches so their code's fopen()/ifstream
+  // calls have something real to read during interactive Run. Cleared on
+  // question switch. Kept small (enforced both client and server side).
+  const [attachedFiles, setAttachedFiles] = useState([]); // [{ name, content }]
   // Submit only becomes available after the current code has been run in the
   // terminal and finished cleanly (compiled, exited with code 0). Any edit to
   // the code, or switching questions, clears this until the next clean run.
@@ -105,6 +109,15 @@ const StudentPortal = () => {
   const terminalInstance = useRef(null);
   const fitAddon = useRef(null);
   const socketRef = useRef(null);
+  // Tracks the backend's current container session so repeated Run clicks
+  // reuse the same warm container instead of paying full container
+  // startup cost every time. Reset to null on question switch (new
+  // container) or disconnect/error (container gone).
+  const activeContainerSessionId = useRef(null);
+  // Files the student attaches for the interactive terminal so fopen()/
+  // ifstream-style code has something real to read while testing, before
+  // submitting. Not persisted — cleared on question switch, like terminalOutput.
+  const [testFiles, setTestFiles] = useState([]); // [{ name, content }]
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const terminalOutputRef = useRef(""); // Ref to accumulate output without re-renders
@@ -470,6 +483,7 @@ const StudentPortal = () => {
     setTestResults(null);
     setTerminalOutput("");
     terminalOutputRef.current = "";
+    setTestFiles([]);
     setIsSubmitted(false);
     setIsEditing(false);
     setCanSubmit(false);
@@ -497,72 +511,88 @@ const StudentPortal = () => {
     terminalOutputRef.current = "⏳ Compiling and starting program...\n\n";
     setTerminalOutput("");
 
-    if (socketRef.current) {
-      socketRef.current.disconnect();
+    // Reuse the existing socket (and therefore the existing warm container
+    // server-side) whenever one is already connected for this same
+    // language, instead of disconnecting and reconnecting on every Run —
+    // reconnecting forces the backend to spin up a brand-new Docker
+    // container each time, which was the actual source of run latency.
+    let socket = socketRef.current;
+    const needsNewSocket =
+      !socket || !socket.connected || socket.lastLanguage !== language;
+
+    if (needsNewSocket) {
+      if (socket) socket.disconnect();
+      activeContainerSessionId.current = null;
+
+      socket = io("http://localhost:5000/terminal", {
+        auth: { token },
+        transports: ["websocket", "polling"],
+        reconnection: false,
+        timeout: 10000,
+      });
+      socket.lastLanguage = language;
+      socketRef.current = socket;
+
+      socket.on("started", (data) => {
+        activeContainerSessionId.current = data.sessionId;
+        term.writeln("✅ Program started!");
+        term.writeln("──────────────────────────────────────");
+        term.writeln("");
+        terminalOutputRef.current +=
+          "✅ Program started!\n──────────────────────────────────────\n\n";
+      });
+
+      socket.on("output", (data) => {
+        term.write(data.data);
+        terminalOutputRef.current += data.data;
+      });
+
+      socket.on("exit", (data) => {
+        term.writeln("");
+        term.writeln("──────────────────────────────────────");
+        term.writeln(`🏁 Program exited with code: ${data.code}`);
+        terminalOutputRef.current += `\n──────────────────────────────────────\n🏁 Program exited with code: ${data.code}\n`;
+        setIsRunning(false);
+        setTerminalOutput(terminalOutputRef.current);
+        setCanSubmit(data.code === 0);
+        // Note: container stays alive here (no socket.disconnect()) so the
+        // next Run reuses it. It's torn down on disconnect, question
+        // switch, or unmount.
+      });
+
+      socket.on("error", (data) => {
+        term.writeln("");
+        term.writeln(`❌ Error: ${data.message}`);
+        terminalOutputRef.current += `\n❌ Error: ${data.message}\n`;
+        setIsRunning(false);
+        setTerminalOutput(terminalOutputRef.current);
+        setCanSubmit(false);
+        activeContainerSessionId.current = null;
+      });
+
+      socket.on("disconnect", () => {
+        setIsRunning(false);
+        activeContainerSessionId.current = null;
+      });
+
+      socket.on("connect_error", (err) => {
+        term.writeln(`❌ Connection error: ${err.message}`);
+        terminalOutputRef.current += `❌ Connection error: ${err.message}\n`;
+        setIsRunning(false);
+        setTerminalOutput(terminalOutputRef.current);
+        setCanSubmit(false);
+      });
+
+      socket.on("connect", () => {
+        socket.emit("start", { code, language, files: testFiles });
+      });
+      return;
     }
 
-    const socket = io("http://localhost:5000/terminal", {
-      auth: { token },
-      transports: ["websocket", "polling"],
-      reconnection: false,
-      timeout: 10000,
-    });
-
-    socketRef.current = socket;
-
-    socket.on("connect", () => {
-      socket.emit("start", { code, language });
-    });
-
-    socket.on("started", (data) => {
-      term.writeln("✅ Program started!");
-      term.writeln("──────────────────────────────────────");
-      term.writeln("");
-      terminalOutputRef.current +=
-        "✅ Program started!\n──────────────────────────────────────\n\n";
-    });
-
-    socket.on("output", (data) => {
-      term.write(data.data);
-      terminalOutputRef.current += data.data;
-    });
-
-    socket.on("exit", (data) => {
-      term.writeln("");
-      term.writeln("──────────────────────────────────────");
-      term.writeln(`🏁 Program exited with code: ${data.code}`);
-      terminalOutputRef.current += `\n──────────────────────────────────────\n🏁 Program exited with code: ${data.code}\n`;
-      setIsRunning(false);
-      setTerminalOutput(terminalOutputRef.current);
-      // A clean exit (code 0) only confirms the program compiled and ran
-      // without crashing — it does NOT mean the output matched the
-      // expected test cases. Actual grading still happens server-side
-      // when Submit is clicked. This just gates whether Submit shows up.
-      setCanSubmit(data.code === 0);
-      socket.disconnect();
-    });
-
-    socket.on("error", (data) => {
-      term.writeln("");
-      term.writeln(`❌ Error: ${data.message}`);
-      terminalOutputRef.current += `\n❌ Error: ${data.message}\n`;
-      setIsRunning(false);
-      setTerminalOutput(terminalOutputRef.current);
-      setCanSubmit(false);
-      socket.disconnect();
-    });
-
-    socket.on("disconnect", () => {
-      setIsRunning(false);
-    });
-
-    socket.on("connect_error", (err) => {
-      term.writeln(`❌ Connection error: ${err.message}`);
-      terminalOutputRef.current += `❌ Connection error: ${err.message}\n`;
-      setIsRunning(false);
-      setTerminalOutput(terminalOutputRef.current);
-      setCanSubmit(false);
-    });
+    // Warm path: socket already connected for this language, just kick off
+    // another run on the existing container. Listeners were already
+    // registered when this socket was first created above.
+    socket.emit("start", { code, language, files: testFiles });
   };
 
   const handleKillProgram = () => {
@@ -912,6 +942,78 @@ const StudentPortal = () => {
               {selectedQuestion.isFreePractice
                 ? " · Ctrl/Cmd+C/V/X Copy/Paste/Cut enabled"
                 : " · Copy/Paste disabled here"}
+            </div>
+          )}
+
+          {/* Test Files — attached for the interactive Run only, so
+              fopen()/ifstream-style code has real files to read while the
+              student is experimenting. Separate from the teacher-defined
+              input_files used at grading time. */}
+          {selectedQuestion && (language === "c" || language === "cpp") && (
+            <div
+              className={`px-4 py-2 border-b text-xs ${darkMode ? "bg-gray-900 border-gray-700 text-gray-400" : "bg-gray-50 border-gray-200 text-gray-500"}`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold">
+                  📄 Test Files ({testFiles.length}/5)
+                </span>
+                <button
+                  onClick={() =>
+                    setTestFiles((prev) =>
+                      prev.length >= 5
+                        ? prev
+                        : [...prev, { name: `data${prev.length + 1}.txt`, content: "" }],
+                    )
+                  }
+                  disabled={testFiles.length >= 5}
+                  className="px-2 py-0.5 bg-gray-500 text-white rounded hover:bg-gray-600 disabled:opacity-50"
+                >
+                  + Add file
+                </button>
+              </div>
+              {testFiles.map((f, idx) => (
+                <div key={idx} className="flex gap-2 items-start mb-1">
+                  <input
+                    value={f.name}
+                    onChange={(e) =>
+                      setTestFiles((prev) =>
+                        prev.map((pf, i) =>
+                          i === idx ? { ...pf, name: e.target.value } : pf,
+                        ),
+                      )
+                    }
+                    placeholder="filename.txt"
+                    className={`px-2 py-1 rounded border w-32 ${darkMode ? "bg-gray-800 border-gray-600 text-gray-200" : "bg-white border-gray-300"}`}
+                  />
+                  <textarea
+                    value={f.content}
+                    onChange={(e) =>
+                      setTestFiles((prev) =>
+                        prev.map((pf, i) =>
+                          i === idx ? { ...pf, content: e.target.value } : pf,
+                        ),
+                      )
+                    }
+                    placeholder="File contents your program will fopen()/read..."
+                    rows={2}
+                    className={`px-2 py-1 rounded border flex-1 font-mono ${darkMode ? "bg-gray-800 border-gray-600 text-gray-200" : "bg-white border-gray-300"}`}
+                  />
+                  <button
+                    onClick={() =>
+                      setTestFiles((prev) => prev.filter((_, i) => i !== idx))
+                    }
+                    className="px-2 py-1 text-red-500 hover:text-red-600"
+                    title="Remove file"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {testFiles.length === 0 && (
+                <div className="italic opacity-70">
+                  No test files attached — add one if your code uses fopen() to read a file.
+                </div>
+              )}
             </div>
           )}
 

@@ -40,6 +40,63 @@ const validateCode = (code, language) => {
   return null;
 };
 
+// Validates student-attached files for the interactive terminal (used to
+// back fopen()/ifstream-style file I/O). Caps count and size so a run
+// can't be used to smuggle large payloads into the sandbox.
+const MAX_ATTACHED_FILES = 5;
+const MAX_FILE_BYTES = 64 * 1024; // 64KB per file
+const validateFiles = (files) => {
+  if (files === undefined || files === null) return null;
+  if (!Array.isArray(files)) return "files must be an array";
+  if (files.length > MAX_ATTACHED_FILES)
+    return `Too many files (max ${MAX_ATTACHED_FILES})`;
+  for (const f of files) {
+    if (!f || typeof f.name !== "string" || typeof f.content !== "string") {
+      return "Each file needs a name and content string";
+    }
+    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(f.name)) {
+      return `Invalid filename: ${f.name}`;
+    }
+    if (Buffer.byteLength(f.content, "utf8") > MAX_FILE_BYTES) {
+      return `File too large: ${f.name} (max 64KB)`;
+    }
+  }
+  return null;
+};
+
+// Socket.IO has no built-in rate limiting, and express-rate-limit only
+// covers HTTP routes — codeExecutionLimiter never touches the socket
+// 'start' event. Without this, a student can trigger unlimited
+// compile+run cycles (each spinning real Docker resources) far faster
+// than the REST /compile endpoint allows.
+const START_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const START_RATE_LIMIT_MAX = 15;
+const socketStartTimestamps = new Map(); // userId -> [timestamps]
+
+const isSocketStartRateLimited = (userId) => {
+  const now = Date.now();
+  const windowStart = now - START_RATE_LIMIT_WINDOW_MS;
+  const timestamps = (socketStartTimestamps.get(userId) || []).filter(
+    (t) => t > windowStart,
+  );
+  timestamps.push(now);
+  socketStartTimestamps.set(userId, timestamps);
+  return timestamps.length > START_RATE_LIMIT_MAX;
+};
+
+// Periodic cleanup so this map doesn't grow unbounded across many users.
+setInterval(
+  () => {
+    const cutoff = Date.now() - START_RATE_LIMIT_WINDOW_MS;
+    for (const [userId, timestamps] of socketStartTimestamps) {
+      const fresh = timestamps.filter((t) => t > cutoff);
+      if (fresh.length === 0) socketStartTimestamps.delete(userId);
+      else socketStartTimestamps.set(userId, fresh);
+    }
+  },
+  5 * 60 * 1000,
+);
+
 /**
  * Setup Socket.IO for interactive terminal
  */
@@ -73,9 +130,16 @@ function setupSocketIO(httpServer) {
     let currentSessionId = null;
 
     socket.on("start", async (data) => {
-      const { code, language } = data;
+      const { code, language, files } = data;
       if (socket.user.role !== "student") {
         socket.emit("error", { message: "Only students can use the terminal" });
+        return;
+      }
+      if (isSocketStartRateLimited(socket.user.userId)) {
+        socket.emit("error", {
+          message:
+            "You're running code too frequently. Please wait a moment before trying again.",
+        });
         return;
       }
       const allowedLanguage = SEMESTER_LANGUAGE[socket.user.semester];
@@ -92,12 +156,21 @@ function setupSocketIO(httpServer) {
         socket.emit("error", { message: validationError });
         return;
       }
-      if (currentSessionId) {
-        await InteractiveTerminalService.killSession(currentSessionId);
+      const fileError = validateFiles(files);
+      if (fileError) {
+        socket.emit("error", { message: fileError });
+        return;
       }
+      // Reuse the existing container when possible instead of tearing it
+      // down and paying full `docker run` cost on every Run click — this
+      // is the actual latency win. startSession() falls back to a fresh
+      // container automatically if the language changed or the previous
+      // one died.
       const result = await InteractiveTerminalService.startSession(
         code,
         language,
+        currentSessionId,
+        files,
       );
       if (!result.success) {
         socket.emit("error", { message: result.error });
