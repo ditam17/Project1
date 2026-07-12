@@ -22,7 +22,8 @@ class InteractiveTerminalService {
    * Writes student-attached files into the session's /code directory so
    * fopen()/ifstream-style file I/O has something real to read. Filenames
    * are reduced to their basename (path.basename) to prevent traversal,
-   * and reserved names can't be clobbered.
+   * and reserved names can't be clobbered. Returns the list of filenames
+   * actually written, so the caller can track them for read-back after run.
    */
   async writeAttachedFiles(tempDir, files) {
     const reserved = new Set([
@@ -33,11 +34,38 @@ class InteractiveTerminalService {
       "program",
       "input.txt",
     ]);
+    const written = [];
     for (const file of files || []) {
       const safeName = path.basename(file.name);
       if (!safeName || reserved.has(safeName)) continue;
       await fs.writeFile(path.join(tempDir, safeName), file.content ?? "");
+      written.push(safeName);
     }
+    return written;
+  }
+
+  /**
+   * Reads back the current on-disk content of every attached file for a
+   * session, so the caller can show the student what their program wrote
+   * (fopen(..., "w")/"a" etc). Must be called BEFORE cleanupSession, which
+   * deletes tempDir. A file the program itself deleted is reported with
+   * content: null rather than thrown.
+   */
+  async readAttachedFileContents(session) {
+    const names = session.attachedFiles || [];
+    const outputs = [];
+    for (const name of names) {
+      try {
+        const content = await fs.readFile(
+          path.join(session.tempDir, name),
+          "utf8",
+        );
+        outputs.push({ name, content });
+      } catch (err) {
+        outputs.push({ name, content: null, error: "File no longer exists" });
+      }
+    }
+    return outputs;
   }
 
   /**
@@ -78,7 +106,10 @@ class InteractiveTerminalService {
 
     const { filename, compileCmd, runCmd } = this.commandsFor(language);
     await fs.writeFile(path.join(session.tempDir, filename), code);
-    await this.writeAttachedFiles(session.tempDir, files);
+    session.attachedFiles = await this.writeAttachedFiles(
+      session.tempDir,
+      files,
+    );
 
     if (compileCmd) {
       const compileResult = await this.execPromise(
@@ -177,7 +208,7 @@ class InteractiveTerminalService {
       // Write source code
       await fs.writeFile(path.join(tempDir, filename), code);
       await fs.writeFile(path.join(tempDir, "input.txt"), "");
-      await this.writeAttachedFiles(tempDir, files);
+      const attachedFiles = await this.writeAttachedFiles(tempDir, files);
 
       // OPTIMIZATION: Use alpine-based images for faster startup
       // Start container with sleep to keep it alive
@@ -248,6 +279,7 @@ class InteractiveTerminalService {
         outputBuffer: "",
         allOutput: "", // NEW: Accumulates ALL output for teacher view
         inputBuffer: "", // NEW: Buffers input until Enter
+        attachedFiles, // NEW: filenames written for this run, for readback after exit
       });
 
       return {
@@ -382,10 +414,21 @@ class InteractiveTerminalService {
       if (onError) onError(text);
     });
 
-    process.on("close", (code) => {
+    process.on("close", async (code) => {
       session.isRunning = false;
-      this.cleanupSession(sessionId);
-      if (onExit) onExit(code);
+      // Read back attached files while the container/tempDir still exist.
+      const fileOutputs = await this.readAttachedFileContents(session).catch(
+        () => [],
+      );
+      if (onExit) onExit(code, fileOutputs);
+      // NOTE: deliberately NOT calling cleanupSession here. The container's
+      // PID1 is an idle `sleep` loop, independent of the student program
+      // that just exited via `docker exec` — the container itself is still
+      // alive and healthy. Destroying it here defeats container reuse
+      // (every next Run would be forced back onto the slow docker-run path)
+      // for no reason: the program finishing is not the same as the
+      // session ending. The container is torn down explicitly instead, via
+      // killSession(), on: kill button, disconnect, or language switch.
     });
 
     process.on("error", (err) => {

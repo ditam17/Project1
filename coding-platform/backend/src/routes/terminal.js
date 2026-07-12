@@ -13,6 +13,7 @@ const InteractiveTerminalService = require("../services/InteractiveTerminalServi
 const BatchExecutionService = require("../services/BatchExecutionService");
 const PlagiarismDetector = require("../utils/similarity");
 const pool = require("../config/database");
+const PDFDocument = require("pdfkit");
 const router = express.Router();
 
 // Security: Input validation
@@ -182,9 +183,12 @@ function setupSocketIO(httpServer) {
         result.sessionId,
         (output) => socket.emit("output", { data: output }),
         (error) => socket.emit("output", { data: error, isError: true }),
-        (exitCode) => {
-          socket.emit("exit", { code: exitCode });
-          currentSessionId = null;
+        (exitCode, fileOutputs) => {
+          socket.emit("exit", { code: exitCode, files: fileOutputs || [] });
+          // currentSessionId deliberately stays set here — the program
+          // exiting doesn't mean the container did. Only kill/disconnect/
+          // language-switch actually tear the container down, so keeping
+          // this set is what lets the next Run reuse the warm container.
         },
       );
     });
@@ -259,12 +263,22 @@ router.get(
   async (req, res, next) => {
     try {
       const studentId = req.user.userId;
+      const language = SEMESTER_LANGUAGE[req.user.semester];
+      if (!language) {
+        return res
+          .status(403)
+          .json({ error: "No semester assigned to this account" });
+      }
+
       const result = await pool.query(
         `SELECT COUNT(DISTINCT s.question_id) as solved_count, COALESCE(SUM(s.score), 0) as total_score,
-         COUNT(DISTINCT q.id) as total_questions FROM users u
+         (SELECT COUNT(*) FROM questions WHERE language = $2 AND is_active = true) as total_questions
+         FROM users u
          LEFT JOIN submissions s ON s.student_id = u.id AND s.status = 'submitted'
-         LEFT JOIN questions q ON q.is_active = true WHERE u.id = $1 GROUP BY u.id`,
-        [studentId],
+           AND s.question_id IN (SELECT id FROM questions WHERE language = $2 AND is_active = true)
+         WHERE u.id = $1
+         GROUP BY u.id`,
+        [studentId, language],
       );
       res.json(
         result.rows[0] || {
@@ -273,6 +287,104 @@ router.get(
           total_questions: 0,
         },
       );
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /api/student/submissions/pdf - downloads every submitted program
+// (code + output) as one multi-page PDF. Only the logged-in student's own
+// submissions — studentId comes from the verified JWT, never from a query
+// param, so this can't be used to pull anyone else's work.
+router.get(
+  "/submissions/pdf",
+  verifyToken,
+  requireRole("student"),
+  async (req, res, next) => {
+    try {
+      const studentId = req.user.userId;
+
+      const result = await pool.query(
+        `SELECT s.code, s.output, s.submitted_at, q.title
+         FROM submissions s
+         JOIN questions q ON q.id = s.question_id
+         WHERE s.student_id = $1 AND s.status IN ('submitted', 'graded')
+         ORDER BY s.submitted_at ASC`,
+        [studentId],
+      );
+
+      if (result.rows.length === 0) {
+        return res
+          .status(404)
+          .json({ error: "No submitted programs to export yet" });
+      }
+
+      const studentName = req.user.name || "student";
+      const filename = `submissions_${studentName.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`;
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`,
+      );
+
+      const doc = new PDFDocument({ margin: 40, bufferPages: true });
+      doc.on("error", (err) => {
+        // The response may already be partially streamed at this point, so
+        // we can't send a JSON error — just end the stream and log it.
+        console.error("PDF generation error:", err);
+        res.end();
+      });
+      doc.pipe(res);
+
+      // Windows-style CRLF (\r\n) line endings — common from copy-paste or
+      // browser textarea handling — leave a stray \r in the text stream.
+      // pdfkit's standard fonts have no glyph for a bare carriage-return
+      // control character, so it renders as garbage (e.g. "Ð") instead of
+      // just being invisible. Normalizing to \n before rendering fixes it.
+      const cleanText = (str) =>
+        (str ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+      result.rows.forEach((sub, idx) => {
+        if (idx > 0) doc.addPage();
+
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(15)
+          .fillColor("#111")
+          .text(`${idx + 1}. ${sub.title}`);
+        doc.moveDown(0.6);
+
+        doc.font("Helvetica-Bold").fontSize(11).fillColor("#111").text("Code");
+        doc.moveDown(0.15);
+        doc
+          .font("Courier")
+          .fontSize(9)
+          .fillColor("#000")
+          .text(cleanText(sub.code) || "(empty)", { width: 515 });
+        doc.moveDown(0.6);
+
+        // `output` (not `terminal_output`) — this is the plain result of
+        // actually running the program against the grading test cases, with
+        // none of the interactive terminal's UI chrome (status lines,
+        // separators, emoji) mixed in.
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(11)
+          .fillColor("#111")
+          .text("Output");
+        doc.moveDown(0.15);
+        doc
+          .font("Courier")
+          .fontSize(9)
+          .fillColor("#333")
+          .text(cleanText(sub.output) || "(no output recorded)", {
+            width: 515,
+          });
+      });
+
+      doc.end();
     } catch (err) {
       next(err);
     }

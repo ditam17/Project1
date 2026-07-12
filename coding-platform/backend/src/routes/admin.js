@@ -17,6 +17,11 @@ const router = express.Router();
 const buildSemesterData = async (semester) => {
   const language = SEMESTER_LANGUAGE[semester];
 
+  const questionCount = await pool.query(
+    "SELECT COUNT(*) FROM questions WHERE language = $1 AND is_active = true",
+    [language],
+  );
+
   const students = await pool.query(
     `SELECT u.id, u.login_id, u.name, u.last_login, u.created_at,
       COUNT(DISTINCT s.question_id) as attempted_count,
@@ -44,6 +49,7 @@ const buildSemesterData = async (semester) => {
 
   return {
     language,
+    totalQuestions: parseInt(questionCount.rows[0].count),
     students: students.rows,
     teachers: teachers.rows,
   };

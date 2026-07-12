@@ -118,6 +118,10 @@ const StudentPortal = () => {
   // ifstream-style code has something real to read while testing, before
   // submitting. Not persisted — cleared on question switch, like terminalOutput.
   const [testFiles, setTestFiles] = useState([]); // [{ name, content }]
+  // Populated from the "exit" event: what each attached file actually
+  // contained after the program ran (so writes made via fopen(..., "w")
+  // are visible, not just the content the student typed in beforehand).
+  const [testFileOutputs, setTestFileOutputs] = useState({}); // { [name]: content }
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const terminalOutputRef = useRef(""); // Ref to accumulate output without re-renders
@@ -444,6 +448,35 @@ const StudentPortal = () => {
     }
   };
 
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    setIsDownloadingPdf(true);
+    try {
+      const res = await api.get("/student/submissions/pdf", {
+        responseType: "blob",
+        timeout: 30000, // generating many pages can take longer than the default 10s
+      });
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "my_submissions.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      if (err.response?.status === 404) {
+        alert("You haven't submitted any programs yet — nothing to download.");
+      } else {
+        alert("Failed to download PDF. Please try again.");
+      }
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
   // NEW: Fetch submission status for all questions
   const fetchSubmissionStatus = async () => {
     try {
@@ -484,6 +517,7 @@ const StudentPortal = () => {
     setTerminalOutput("");
     terminalOutputRef.current = "";
     setTestFiles([]);
+    setTestFileOutputs({});
     setIsSubmitted(false);
     setIsEditing(false);
     setCanSubmit(false);
@@ -503,6 +537,7 @@ const StudentPortal = () => {
     const term = terminalInstance.current;
     setIsRunning(true);
     setCanSubmit(false);
+    setTestFileOutputs({}); // clear last run's readback — it's about to be stale
     term.clear();
     term.writeln("⏳ Compiling and starting program...");
     term.writeln("");
@@ -555,6 +590,12 @@ const StudentPortal = () => {
         setIsRunning(false);
         setTerminalOutput(terminalOutputRef.current);
         setCanSubmit(data.code === 0);
+        // Show what the program actually wrote to each attached file.
+        const outputs = {};
+        (data.files || []).forEach((f) => {
+          outputs[f.name] = f.content;
+        });
+        setTestFileOutputs(outputs);
         // Note: container stays alive here (no socket.disconnect()) so the
         // next Run reuses it. It's torn down on disconnect, question
         // switch, or unmount.
@@ -972,41 +1013,66 @@ const StudentPortal = () => {
                 </button>
               </div>
               {testFiles.map((f, idx) => (
-                <div key={idx} className="flex gap-2 items-start mb-1">
-                  <input
-                    value={f.name}
-                    onChange={(e) =>
-                      setTestFiles((prev) =>
-                        prev.map((pf, i) =>
-                          i === idx ? { ...pf, name: e.target.value } : pf,
-                        ),
-                      )
-                    }
-                    placeholder="filename.txt"
-                    className={`px-2 py-1 rounded border w-32 ${darkMode ? "bg-gray-800 border-gray-600 text-gray-200" : "bg-white border-gray-300"}`}
-                  />
-                  <textarea
-                    value={f.content}
-                    onChange={(e) =>
-                      setTestFiles((prev) =>
-                        prev.map((pf, i) =>
-                          i === idx ? { ...pf, content: e.target.value } : pf,
-                        ),
-                      )
-                    }
-                    placeholder="File contents your program will fopen()/read..."
-                    rows={2}
-                    className={`px-2 py-1 rounded border flex-1 font-mono ${darkMode ? "bg-gray-800 border-gray-600 text-gray-200" : "bg-white border-gray-300"}`}
-                  />
-                  <button
-                    onClick={() =>
-                      setTestFiles((prev) => prev.filter((_, i) => i !== idx))
-                    }
-                    className="px-2 py-1 text-red-500 hover:text-red-600"
-                    title="Remove file"
-                  >
-                    ✕
-                  </button>
+                <div key={idx} className="mb-1">
+                  <div className="flex gap-2 items-start">
+                    <input
+                      value={f.name}
+                      onChange={(e) =>
+                        setTestFiles((prev) =>
+                          prev.map((pf, i) =>
+                            i === idx ? { ...pf, name: e.target.value } : pf,
+                          ),
+                        )
+                      }
+                      placeholder="filename.txt"
+                      className={`px-2 py-1 rounded border w-32 ${darkMode ? "bg-gray-800 border-gray-600 text-gray-200" : "bg-white border-gray-300"}`}
+                    />
+                    <textarea
+                      value={f.content}
+                      onChange={(e) =>
+                        setTestFiles((prev) =>
+                          prev.map((pf, i) =>
+                            i === idx ? { ...pf, content: e.target.value } : pf,
+                          ),
+                        )
+                      }
+                      placeholder="File contents your program will fopen()/read..."
+                      rows={2}
+                      className={`px-2 py-1 rounded border flex-1 font-mono ${darkMode ? "bg-gray-800 border-gray-600 text-gray-200" : "bg-white border-gray-300"}`}
+                    />
+                    <button
+                      onClick={() =>
+                        setTestFiles((prev) => prev.filter((_, i) => i !== idx))
+                      }
+                      className="px-2 py-1 text-red-500 hover:text-red-600"
+                      title="Remove file"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {/* Read-only readback of what the last run actually left in
+                      this file — only shown once we have a result, and only
+                      if it differs from what's typed above (fopen "w"/"a"
+                      would change it; a program that only reads it won't). */}
+                  {Object.prototype.hasOwnProperty.call(testFileOutputs, f.name) && (
+                    <div className="flex gap-2 items-start mt-1 ml-[8.5rem]">
+                      <span className="text-xs pt-1 opacity-70 w-10 shrink-0">
+                        after run:
+                      </span>
+                      {testFileOutputs[f.name] === null ? (
+                        <span className="text-xs italic pt-1 text-red-400">
+                          file no longer exists (program deleted it)
+                        </span>
+                      ) : (
+                        <textarea
+                          readOnly
+                          value={testFileOutputs[f.name]}
+                          rows={2}
+                          className={`px-2 py-1 rounded border flex-1 font-mono text-xs ${darkMode ? "bg-gray-800/50 border-gray-700 text-gray-400" : "bg-gray-100 border-gray-200 text-gray-600"}`}
+                        />
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
               {testFiles.length === 0 && (
@@ -1075,6 +1141,14 @@ const StudentPortal = () => {
               {progress.total_score} points
             </div>
           </div>
+
+          <button
+            onClick={handleDownloadPdf}
+            disabled={isDownloadingPdf}
+            className="w-full mb-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-medium flex items-center justify-center gap-2"
+          >
+            {isDownloadingPdf ? "Generating PDF..." : "📄 Download All Submissions (PDF)"}
+          </button>
 
           {submissions.length > 0 && (
             <>

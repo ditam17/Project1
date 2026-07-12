@@ -107,27 +107,32 @@ const AdminDashboard = () => {
           <div className="text-2xl font-bold">
             {overview.stats.totalStudents}
           </div>
-          <div className="text-sm text-gray-500">Total Students</div>
+          <div className="text-sm text-gray-500">Total Students (both semesters)</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
           <div className="text-2xl font-bold">
             {overview.stats.totalTeachers}
           </div>
-          <div className="text-sm text-gray-500">Total Teachers</div>
+          <div className="text-sm text-gray-500">Total Teachers (both semesters)</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
           <div className="text-2xl font-bold">
-            {overview.stats.totalQuestions}
+            {semesterData?.totalQuestions ?? 0}
           </div>
-          <div className="text-sm text-gray-500">Active Questions</div>
+          <div className="text-sm text-gray-500">
+            Active Questions — Semester {meta.label} ({meta.language})
+          </div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
           <div className="text-2xl font-bold">
             {overview.stats.totalSubmissions}
           </div>
-          <div className="text-sm text-gray-500">Total Submissions</div>
+          <div className="text-sm text-gray-500">Total Submissions (both semesters)</div>
         </div>
       </div>
+      <p className="px-6 -mt-3 mb-3 text-xs text-gray-400">
+        {overview.stats.totalQuestions} active questions across both semesters combined
+      </p>
 
       {/* Semester tabs */}
       <div className="px-6">
