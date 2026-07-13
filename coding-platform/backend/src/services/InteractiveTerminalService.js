@@ -131,13 +131,19 @@ class InteractiveTerminalService {
 
     const programProcess = spawn(
       "docker",
+      // stty -echo: the frontend already echoes typed characters locally
+      // (xterm's onData writes each keystroke immediately for responsive
+      // feedback). Without this, the PTY that `script` allocates ALSO
+      // echoes stdin back to stdout on its own — a kernel tty-driver
+      // behavior, unrelated to the student's program — so every typed
+      // character showed up twice.
       [
         "exec",
         "-i",
         session.containerId,
         "sh",
         "-c",
-        `script -q /dev/null -c "${runCmd}"`,
+        `script -q /dev/null -c "stty -echo; ${runCmd}"`,
       ],
       { stdio: ["pipe", "pipe", "pipe"] },
     );
@@ -252,8 +258,11 @@ class InteractiveTerminalService {
         }
       }
 
-      // Start the program using docker exec with stdin attached
-      // Use 'script' to get a PTY for interactive programs
+      // Start the program using docker exec with stdin attached.
+      // Use 'script' to get a PTY for interactive programs.
+      // stty -echo: see the matching comment in restartInContainer() —
+      // the frontend already echoes keystrokes locally, so the PTY's own
+      // echo was causing every typed character to appear twice.
       const programProcess = spawn(
         "docker",
         [
@@ -262,7 +271,7 @@ class InteractiveTerminalService {
           trimmedContainerId,
           "sh",
           "-c",
-          `script -q /dev/null -c "${runCmd}"`,
+          `script -q /dev/null -c "stty -echo; ${runCmd}"`,
         ],
         {
           stdio: ["pipe", "pipe", "pipe"],

@@ -308,8 +308,16 @@ router.get(
     try {
       const studentId = req.user.userId;
 
+      // Per-test-case input/output (test_results), not the flat
+      // submissions.output blob — that blob is every grading test case's
+      // output concatenated with no labels (e.g. "30\n300" for two test
+      // cases), which reads as one wrong number rather than two correct,
+      // separate results. json_agg + ORDER BY inside the subquery keeps
+      // each submission's test cases in their original order.
       const result = await pool.query(
-        `SELECT s.code, s.output, s.submitted_at, q.title
+        `SELECT s.code, s.submitted_at, q.title,
+                (SELECT json_agg(t.* ORDER BY t.test_case_index)
+                 FROM test_results t WHERE t.submission_id = s.id) as test_results
          FROM submissions s
          JOIN questions q ON q.id = s.question_id
          WHERE s.student_id = $1 AND s.status IN ('submitted', 'graded')
@@ -341,6 +349,8 @@ router.get(
       });
       doc.pipe(res);
 
+      const CONTENT_WIDTH = 515;
+
       // Windows-style CRLF (\r\n) line endings — common from copy-paste or
       // browser textarea handling — leave a stray \r in the text stream.
       // pdfkit's standard fonts have no glyph for a bare carriage-return
@@ -348,6 +358,32 @@ router.get(
       // just being invisible. Normalizing to \n before rendering fixes it.
       const cleanText = (str) =>
         (str ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+      // .rect()/.fill() don't auto-paginate the way .text() does, so a box
+      // that would run past the bottom margin needs a manual page break
+      // *before* it's drawn — otherwise it silently clips or bleeds onto
+      // the next page without the black fill following it.
+      const drawTerminalBox = (text) => {
+        const padding = 10;
+        doc.font("Courier").fontSize(9);
+        const textHeight = doc.heightOfString(text, {
+          width: CONTENT_WIDTH - padding * 2,
+        });
+        const boxHeight = textHeight + padding * 2;
+        const remaining = doc.page.height - doc.page.margins.bottom - doc.y;
+        if (boxHeight > remaining) doc.addPage();
+
+        const y = doc.y;
+        doc.rect(doc.x, y, CONTENT_WIDTH, boxHeight).fill("#000000");
+        doc
+          .fillColor("#FFFF00") // terminal-yellow, readable on black
+          .font("Courier")
+          .fontSize(9)
+          .text(text, doc.x + padding, y + padding, {
+            width: CONTENT_WIDTH - padding * 2,
+          });
+        doc.y = y + boxHeight + 10;
+      };
 
       result.rows.forEach((sub, idx) => {
         if (idx > 0) doc.addPage();
@@ -365,26 +401,27 @@ router.get(
           .font("Courier")
           .fontSize(9)
           .fillColor("#000")
-          .text(cleanText(sub.code) || "(empty)", { width: 515 });
+          .text(cleanText(sub.code) || "(empty)", { width: CONTENT_WIDTH });
         doc.moveDown(0.6);
 
-        // `output` (not `terminal_output`) — this is the plain result of
-        // actually running the program against the grading test cases, with
-        // none of the interactive terminal's UI chrome (status lines,
-        // separators, emoji) mixed in.
         doc
           .font("Helvetica-Bold")
           .fontSize(11)
           .fillColor("#111")
           .text("Output");
-        doc.moveDown(0.15);
-        doc
-          .font("Courier")
-          .fontSize(9)
-          .fillColor("#333")
-          .text(cleanText(sub.output) || "(no output recorded)", {
-            width: 515,
-          });
+        doc.moveDown(0.2);
+
+        const testResults = sub.test_results || [];
+        if (testResults.length === 0) {
+          drawTerminalBox("(no output recorded)");
+        } else {
+          const tc = testResults[0];
+          const lines = [
+            `Input:  ${cleanText(tc.input) || "(none)"}`,
+            `Output: ${cleanText(tc.actual_output) || "(no output)"}`,
+          ];
+          drawTerminalBox(lines.join("\n"));
+        }
       });
 
       doc.end();
