@@ -104,6 +104,9 @@ const StudentPortal = () => {
   // terminal and finished cleanly (compiled, exited with code 0). Any edit to
   // the code, or switching questions, clears this until the next clean run.
   const [canSubmit, setCanSubmit] = useState(false);
+  // Whether the sample test cases panel is expanded — visible by default so
+  // students can see exactly what input/output their code is graded against.
+  const [showTestCases, setShowTestCases] = useState(true);
 
   const terminalRef = useRef(null);
   const terminalInstance = useRef(null);
@@ -368,16 +371,24 @@ const StudentPortal = () => {
           const lineToSend = inputBuffer;
           inputBuffer = "";
           term.write("\r\n"); // New line in terminal
+          // Record the newline so the saved transcript (terminalOutputRef)
+          // matches what's visible on screen — not just the program's own
+          // stdout/stderr, but the student's typed input too.
+          terminalOutputRef.current += "\n";
           socketRef.current.emit("input", { input: lineToSend + "\n" });
         } else if (data === "\x7f" || data === "\b") {
           // Backspace handling
           if (inputBuffer.length > 0) {
             inputBuffer = inputBuffer.slice(0, -1);
             term.write("\b \b"); // Erase character visually
+            // Undo the last recorded character to match the erase on screen.
+            terminalOutputRef.current = terminalOutputRef.current.slice(0, -1);
           }
         } else {
           // Accumulate character
           inputBuffer += data;
+          // Mirror the typed character into the saved transcript.
+          terminalOutputRef.current += data;
         }
       });
 
@@ -985,6 +996,64 @@ const StudentPortal = () => {
                 : " · Copy/Paste disabled here"}
             </div>
           )}
+
+          {/* Sample Test Case — one worked input/expected-output example
+              (the rest stay server-side, used in full at grading time), so
+              students can see the expected format and self-test before
+              submitting. Not shown for Free Practice, which has none. */}
+          {selectedQuestion &&
+            !selectedQuestion.isFreePractice &&
+            selectedQuestion.sample_test_case && (
+              <div
+                className={`px-4 py-2 border-b text-xs ${darkMode ? "bg-gray-900 border-gray-700 text-gray-400" : "bg-gray-50 border-gray-200 text-gray-500"}`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-semibold">🧪 Sample Test Case</span>
+                  <button
+                    onClick={() => setShowTestCases((v) => !v)}
+                    className="px-2 py-0.5 bg-gray-500 text-white rounded hover:bg-gray-600"
+                  >
+                    {showTestCases ? "Hide" : "Show"}
+                  </button>
+                </div>
+                {showTestCases &&
+                  (() => {
+                    const tc = selectedQuestion.sample_test_case;
+                    return (
+                      <div
+                        className={`p-2 rounded border font-mono mt-1 ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}
+                      >
+                        <div>Input: {tc.input || "(none)"}</div>
+                        <div>
+                          Expected Output: {tc.expected_output || "(none)"}
+                        </div>
+                        {tc.input_files &&
+                          Object.keys(tc.input_files).length > 0 && (
+                            <div className="mt-1">
+                              Input files:{" "}
+                              {Object.entries(tc.input_files)
+                                .map(
+                                  ([name, content]) => `${name} = "${content}"`,
+                                )
+                                .join(", ")}
+                            </div>
+                          )}
+                        {tc.expected_files &&
+                          Object.keys(tc.expected_files).length > 0 && (
+                            <div>
+                              Expected files:{" "}
+                              {Object.entries(tc.expected_files)
+                                .map(
+                                  ([name, content]) => `${name} = "${content}"`,
+                                )
+                                .join(", ")}
+                            </div>
+                          )}
+                      </div>
+                    );
+                  })()}
+              </div>
+            )}
 
           {/* Test Files — attached for the interactive Run only, so
               fopen()/ifstream-style code has real files to read while the

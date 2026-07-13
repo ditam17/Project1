@@ -246,8 +246,13 @@ router.get(
       if (!["c", "cpp", "python", "java"].includes(language)) {
         return res.status(400).json({ error: "Invalid language" });
       }
+      // Only the first test case is exposed to students, as a worked
+      // sample — enough to self-test the expected input/output format
+      // before submitting, without leaking every official test case (the
+      // rest stay server-side and are still used in full by
+      // BatchExecutionService at grading time).
       const result = await pool.query(
-        `SELECT id, title, description, starter_code, language, points, time_limit, memory_limit, category
+        `SELECT id, title, description, starter_code, language, points, time_limit, memory_limit, category, test_cases->0 as sample_test_case
          FROM questions WHERE language = $1 AND is_active = true ORDER BY id`,
         [language],
       );
@@ -308,16 +313,14 @@ router.get(
     try {
       const studentId = req.user.userId;
 
-      // Per-test-case input/output (test_results), not the flat
-      // submissions.output blob — that blob is every grading test case's
-      // output concatenated with no labels (e.g. "30\n300" for two test
-      // cases), which reads as one wrong number rather than two correct,
-      // separate results. json_agg + ORDER BY inside the subquery keeps
-      // each submission's test cases in their original order.
+      // terminal_output is the actual interactive session the student typed
+      // and saw before submitting (their typed input, interleaved with the
+      // program's real stdout/stderr, in order) — this is what the PDF
+      // should show, not the auto-grading test_results (those reflect the
+      // official test cases run at submit time, which the student never
+      // saw in their own terminal).
       const result = await pool.query(
-        `SELECT s.code, s.submitted_at, q.title,
-                (SELECT json_agg(t.* ORDER BY t.test_case_index)
-                 FROM test_results t WHERE t.submission_id = s.id) as test_results
+        `SELECT s.code, s.submitted_at, s.terminal_output, q.title
          FROM submissions s
          JOIN questions q ON q.id = s.question_id
          WHERE s.student_id = $1 AND s.status IN ('submitted', 'graded')
@@ -339,6 +342,30 @@ router.get(
         "Content-Disposition",
         `attachment; filename="${filename}"`,
       );
+
+      // The raw transcript also contains client-side terminal "chrome" —
+      // the compiling/started/exited banners and the box-drawing separator
+      // lines. Those are emoji/unicode-box characters with no glyph in
+      // PDFKit's standard Courier font (hence the garbled bytes), and
+      // they aren't actual input/output anyway — strip them so only what
+      // the student actually typed and saw as program output remains.
+      const extractIO = (raw) => {
+        if (!raw) return "";
+        return raw
+          .split("\n")
+          .filter((line) => {
+            const t = line.trim();
+            if (t === "") return false;
+            if (/^[─-]+$/.test(t)) return false;
+            if (/compiling and starting program/i.test(t)) return false;
+            if (/program started/i.test(t)) return false;
+            if (/program exited with code/i.test(t)) return false;
+            if (/^connection error/i.test(t)) return false;
+            if (/^error:/i.test(t)) return false;
+            return true;
+          })
+          .join("\n");
+      };
 
       const doc = new PDFDocument({ margin: 40, bufferPages: true });
       doc.on("error", (err) => {
@@ -408,20 +435,13 @@ router.get(
           .font("Helvetica-Bold")
           .fontSize(11)
           .fillColor("#111")
-          .text("Output");
+          .text("Terminal Output");
         doc.moveDown(0.2);
 
-        const testResults = sub.test_results || [];
-        if (testResults.length === 0) {
-          drawTerminalBox("(no output recorded)");
-        } else {
-          const tc = testResults[0];
-          const lines = [
-            `Input:  ${cleanText(tc.input) || "(none)"}`,
-            `Output: ${cleanText(tc.actual_output) || "(no output)"}`,
-          ];
-          drawTerminalBox(lines.join("\n"));
-        }
+        drawTerminalBox(
+          extractIO(cleanText(sub.terminal_output)) ||
+            "(no input/output recorded)",
+        );
       });
 
       doc.end();
