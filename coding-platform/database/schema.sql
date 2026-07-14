@@ -318,32 +318,3 @@ int main() {
     return 0;
 }', '[{"input": "", "expected_output": "", "input_files": {"input.txt": "line1\nline2\nline3\n"}, "expected_files": {"output.txt": "3\n"}}, {"input": "", "expected_output": "", "input_files": {"input.txt": "hello\nworld\n"}, "expected_files": {"output.txt": "2\n"}}]', 2, 64, 25, 1);
 
--- 8. Python File Processing
-INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by) VALUES
-('File Word Counter', 'Read "text.txt" and write the word count to "count.txt"', 'python', 'with open("text.txt", "r") as f:
-    text = f.read()
-
-words = text.split()
-count = len(words)
-
-with open("count.txt", "w") as f:
-    f.write(str(count) + "\n")
-', '[{"input": "", "expected_output": "", "input_files": {"text.txt": "hello world test"}, "expected_files": {"count.txt": "3\n"}}, {"input": "", "expected_output": "", "input_files": {"text.txt": "one two three four five"}, "expected_files": {"count.txt": "5\n"}}]', 2, 64, 25, 1);
-
--- 9. Java File I/O
-INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by) VALUES
-('Java File Copy', 'Read "source.txt" and copy its content to "destination.txt"', 'java', E'import java.io.*;
-
-public class Main {
-    public static void main(String[] args) throws IOException {
-        BufferedReader reader = new BufferedReader(new FileReader("source.txt"));
-        BufferedWriter writer = new BufferedWriter(new FileWriter("destination.txt"));
-        String line;
-        while ((line = reader.readLine()) != null) {
-            writer.write(line);
-            writer.newLine();
-        }
-        reader.close();
-        writer.close();
-    }
-}', '[{"input": "", "expected_output": "", "input_files": {"source.txt": "Hello\nWorld\n"}, "expected_files": {"destination.txt": "Hello\nWorld\n"}}]', 2, 64, 25, 1);

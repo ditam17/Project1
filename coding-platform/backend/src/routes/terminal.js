@@ -252,8 +252,8 @@ router.get(
       // rest stay server-side and are still used in full by
       // BatchExecutionService at grading time).
       const result = await pool.query(
-        `SELECT id, title, description, starter_code, language, points, time_limit, memory_limit, category, test_cases->0 as sample_test_case
-         FROM questions WHERE language = $1 AND is_active = true ORDER BY id`,
+        `SELECT id, title, description, starter_code, language, points, time_limit, memory_limit, category, chapter, test_cases->0 as sample_test_case
+   FROM questions WHERE language = $1 AND is_active = true ORDER BY id`,
         [language],
       );
       res.json(result.rows);

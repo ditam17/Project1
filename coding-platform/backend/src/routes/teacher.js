@@ -303,6 +303,7 @@ router.post(
         memory_limit,
         points,
         category,
+        chapter, // NEW
       } = req.body;
       if (!title || !description || !test_cases) {
         return res.status(400).json({
@@ -317,9 +318,15 @@ router.post(
           error: "category must be 'assignment' or 'practice'",
         });
       }
+      // Optional field — trimmed and length-capped to match the column, so a
+      // stray huge string can't blow past VARCHAR(150) with a raw DB error.
+      const safeChapter =
+        typeof chapter === "string" && chapter.trim()
+          ? chapter.trim().slice(0, 150)
+          : null;
       const result = await pool.query(
-        `INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by, category)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        `INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by, category, chapter)
+   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
         [
           title,
           description,
@@ -331,6 +338,7 @@ router.post(
           points || 10,
           req.user.userId,
           category || "assignment",
+          safeChapter,
         ],
       );
       res.status(201).json(result.rows[0]);
@@ -361,6 +369,7 @@ router.put(
         points,
         is_active,
         category,
+        chapter, // NEW
       } = req.body;
       if (
         category !== undefined &&
@@ -370,13 +379,19 @@ router.put(
           error: "category must be 'assignment' or 'practice'",
         });
       }
+      const safeChapter =
+        chapter === undefined
+          ? undefined
+          : typeof chapter === "string" && chapter.trim()
+            ? chapter.trim().slice(0, 150)
+            : null;
       // language column is intentionally left untouched here — a teacher
       // can't move a question into the other semester's language.
       const result = await pool.query(
         `UPDATE questions SET title = $1, description = $2, starter_code = $3,
-       test_cases = $4, time_limit = $5, memory_limit = $6, points = $7, is_active = $8,
-       category = COALESCE($9, category), updated_at = CURRENT_TIMESTAMP
-       WHERE id = $10 RETURNING *`,
+   test_cases = $4, time_limit = $5, memory_limit = $6, points = $7, is_active = $8,
+   category = COALESCE($9, category), chapter = COALESCE($10, chapter), updated_at = CURRENT_TIMESTAMP
+   WHERE id = $11 RETURNING *`,
         [
           title,
           description,
@@ -387,6 +402,7 @@ router.put(
           points,
           is_active,
           category || null,
+          safeChapter,
           id,
         ],
       );

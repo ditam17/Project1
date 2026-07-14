@@ -22,10 +22,10 @@ const makeFreePracticeEntry = (language) => ({
   isFreePractice: true,
 });
 
-// Renders one titled list of question cards (used for both the
-// Assignments and Extra Practice sections so the card markup and
-// submitted-checkmark logic only live in one place).
-const QuestionGroup = ({
+// Renders one titled list of question cards, grouped into collapsible
+// chapters. Used for both the Assignments and Extra Practice sections
+// so the card markup and submitted-checkmark logic only live in one place.
+const ChapterAccordion = ({
   title,
   questions,
   selectedQuestion,
@@ -33,44 +33,97 @@ const QuestionGroup = ({
   darkMode,
   onSelect,
   emptyLabel,
-}) => (
-  <div className="mb-6">
-    <h2 className="text-lg font-bold mb-4">{title}</h2>
-    <div className="space-y-3">
-      {questions.map((q) => {
-        const isQSubmitted = submissionStatus[q.id] === "submitted";
-        return (
-          <button
-            key={q.id}
-            onClick={() => onSelect(q)}
-            className={`w-full text-left p-4 rounded-lg border transition-all ${
-              selectedQuestion?.id === q.id
-                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                : darkMode
-                  ? "border-gray-700 hover:bg-gray-700"
-                  : "border-gray-200 hover:bg-gray-50"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-semibold">{q.title}</span>
-              {isQSubmitted && (
-                <span className="text-green-500 text-lg" title="Submitted">
-                  ✅
-                </span>
-              )}
-            </div>
-            <div className="text-sm text-gray-500 mt-1">
-              {q.points} points • {q.language.toUpperCase()}
-            </div>
-          </button>
-        );
-      })}
-      {questions.length === 0 && (
+}) => {
+  // Chapter name -> expanded/collapsed. Starts empty so every chapter
+  // begins collapsed — students see chapter names first, questions only
+  // after clicking, per the requirement.
+  const [expanded, setExpanded] = useState({});
+
+  const toggleChapter = (chapterName) => {
+    setExpanded((prev) => ({ ...prev, [chapterName]: !prev[chapterName] }));
+  };
+
+  // Group by chapter; questions with no chapter (the original sample
+  // questions predate this field) fall back to "General" so nothing
+  // disappears from the list.
+  const grouped = questions.reduce((acc, q) => {
+    const key = q.chapter || "General";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(q);
+    return acc;
+  }, {});
+  const chapterNames = Object.keys(grouped);
+
+  return (
+    <div className="mb-6">
+      <h2 className="text-lg font-bold mb-4">{title}</h2>
+      {chapterNames.length === 0 && (
         <p className="text-sm text-gray-400">{emptyLabel}</p>
       )}
+      <div className="space-y-2">
+        {chapterNames.map((chapterName) => {
+          const isOpen = !!expanded[chapterName];
+          const chapterQuestions = grouped[chapterName];
+          return (
+            <div
+              key={chapterName}
+              className={`rounded-lg border ${darkMode ? "border-gray-700" : "border-gray-200"}`}
+            >
+              <button
+                onClick={() => toggleChapter(chapterName)}
+                className={`w-full text-left px-4 py-3 flex items-center justify-between font-semibold ${
+                  darkMode ? "hover:bg-gray-700" : "hover:bg-gray-50"
+                }`}
+              >
+                <span>
+                  {isOpen ? "▼" : "▶"} {chapterName}
+                </span>
+                <span className="text-sm text-gray-500 font-normal">
+                  {chapterQuestions.length}
+                </span>
+              </button>
+              {isOpen && (
+                <div className="px-3 pb-3 space-y-3">
+                  {chapterQuestions.map((q) => {
+                    const isQSubmitted = submissionStatus[q.id] === "submitted";
+                    return (
+                      <button
+                        key={q.id}
+                        onClick={() => onSelect(q)}
+                        className={`w-full text-left p-4 rounded-lg border transition-all ${
+                          selectedQuestion?.id === q.id
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                            : darkMode
+                              ? "border-gray-700 hover:bg-gray-700"
+                              : "border-gray-200 hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold">{q.title}</span>
+                          {isQSubmitted && (
+                            <span
+                              className="text-green-500 text-lg"
+                              title="Submitted"
+                            >
+                              ✅
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-500 mt-1">
+                          {q.points} points • {q.language.toUpperCase()}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const StudentPortal = () => {
   const initialUser = JSON.parse(localStorage.getItem("user") || "{}");
@@ -828,7 +881,7 @@ const StudentPortal = () => {
             </div>
           </button>
 
-          <QuestionGroup
+          <ChapterAccordion
             title="📘 Assignments"
             questions={questions.filter((q) => q.category !== "practice")}
             selectedQuestion={selectedQuestion}
@@ -838,7 +891,7 @@ const StudentPortal = () => {
             emptyLabel="No assignments yet."
           />
 
-          <QuestionGroup
+          <ChapterAccordion
             title="🧪 Extra Practice"
             questions={questions.filter((q) => q.category === "practice")}
             selectedQuestion={selectedQuestion}
@@ -981,6 +1034,26 @@ const StudentPortal = () => {
                 ))}
             </div>
           </div>
+          {/* Problem Statement — the "WAP to..." description, shown before the
+    editor so students read the actual task before they start coding.
+    Height-capped so a long description can't push the editor down;
+    it scrolls internally instead. */}
+          {selectedQuestion && !selectedQuestion.isFreePractice && (
+            <div
+              className={`px-4 py-3 border-b max-h-28 overflow-y-auto ${
+                darkMode
+                  ? "bg-gray-900 border-gray-700 text-gray-200"
+                  : "bg-blue-50 border-blue-100 text-gray-800"
+              }`}
+            >
+              <div className="text-xs font-bold uppercase tracking-wide text-blue-500 mb-1">
+                📋 Problem Statement
+              </div>
+              <p className="text-sm leading-relaxed">
+                {selectedQuestion.description}
+              </p>
+            </div>
+          )}
 
           {/* Shortcuts hint - contextual per section, purely informational */}
           {selectedQuestion && (
