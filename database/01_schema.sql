@@ -223,40 +223,40 @@ INSERT INTO users (login_id, password_hash, name, role, semester) VALUES
 -- SAMPLE QUESTIONS - STDOUT-BASED
 -- ============================================
 
--- 1. Hello World (C)
-INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by) VALUES
-('Hello World', 'Write a program to print Hello World', 'c', E'#include <stdio.h>
+-- -- 1. Hello World (C)
+-- INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by) VALUES
+-- ('Hello World', 'Write a program to print Hello World', 'c', E'#include <stdio.h>
 
-int main() {
-    // Write your code here
-    printf("Hello, World!\n");
-    return 0;
-}', '[{"input": "", "expected_output": "Hello, World!\n"}]', 2, 64, 10, 1);
+-- int main() {
+--     // Write your code here
+--     printf("Hello, World!\n");
+--     return 0;
+-- }', '[{"input": "", "expected_output": "Hello, World!\n"}]', 2, 64, 10, 1);
 
--- 2. Sum of Two Numbers (C)
-INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by) VALUES
-('Sum of Two Numbers', 'Write a program to add two integers', 'c', E'#include <stdio.h>
+-- -- 2. Sum of Two Numbers (C)
+-- INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by) VALUES
+-- ('Sum of Two Numbers', 'Write a program to add two integers', 'c', E'#include <stdio.h>
 
-int main() {
-    int a, b;
-    scanf("%d %d", &a, &b);
-    printf("%d\n", a + b);
-    return 0;
-}', '[{"input": "5 3\n", "expected_output": "8\n"}, {"input": "10 20\n", "expected_output": "30\n"}, {"input": "0 0\n", "expected_output": "0\n"}]', 2, 64, 15, 1);
+-- int main() {
+--     int a, b;
+--     scanf("%d %d", &a, &b);
+--     printf("%d\n", a + b);
+--     return 0;
+-- }', '[{"input": "5 3\n", "expected_output": "8\n"}, {"input": "10 20\n", "expected_output": "30\n"}, {"input": "0 0\n", "expected_output": "0\n"}]', 2, 64, 15, 1);
 
--- 3. Factorial (C)
-INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by) VALUES
-('Factorial', 'Calculate factorial of a number', 'c', E'#include <stdio.h>
+-- -- 3. Factorial (C)
+-- INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by) VALUES
+-- ('Factorial', 'Calculate factorial of a number', 'c', E'#include <stdio.h>
 
-int main() {
-    int n, i;
-    long long fact = 1;
-    scanf("%d", &n);
-    for(i = 1; i <= n; i++)
-        fact *= i;
-    printf("%lld\n", fact);
-    return 0;
-}', '[{"input": "5\n", "expected_output": "120\n"}, {"input": "0\n", "expected_output": "1\n"}, {"input": "3\n", "expected_output": "6\n"}]', 2, 64, 20, 1);
+-- int main() {
+--     int n, i;
+--     long long fact = 1;
+--     scanf("%d", &n);
+--     for(i = 1; i <= n; i++)
+--         fact *= i;
+--     printf("%lld\n", fact);
+--     return 0;
+-- }', '[{"input": "5\n", "expected_output": "120\n"}, {"input": "0\n", "expected_output": "1\n"}, {"input": "3\n", "expected_output": "6\n"}]', 2, 64, 20, 1);
 
 -- 4. Hello World C++
 INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by) VALUES
@@ -284,20 +284,20 @@ int main() {
 -- NEW: FILE-BASED QUESTIONS
 -- ============================================
 
--- 6. Read and Write File (C) - FILE I/O
-INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by) VALUES
-('File Reader Writer', 'Read two integers from "data.txt", calculate their sum, and write the result to "result.txt"', 'c', E'#include <stdio.h>
+-- -- 6. Read and Write File (C) - FILE I/O
+-- INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by) VALUES
+-- ('File Reader Writer', 'Read two integers from "data.txt", calculate their sum, and write the result to "result.txt"', 'c', E'#include <stdio.h>
 
-int main() {
-    FILE *in = fopen("data.txt", "r");
-    FILE *out = fopen("result.txt", "w");
-    int a, b;
-    fscanf(in, "%d %d", &a, &b);
-    fprintf(out, "%d\n", a + b);
-    fclose(in);
-    fclose(out);
-    return 0;
-}', '[{"input": "", "expected_output": "", "input_files": {"data.txt": "5 3"}, "expected_files": {"result.txt": "8\n"}}, {"input": "", "expected_output": "", "input_files": {"data.txt": "100 200"}, "expected_files": {"result.txt": "300\n"}}]', 2, 64, 25, 1);
+-- int main() {
+--     FILE *in = fopen("data.txt", "r");
+--     FILE *out = fopen("result.txt", "w");
+--     int a, b;
+--     fscanf(in, "%d %d", &a, &b);
+--     fprintf(out, "%d\n", a + b);
+--     fclose(in);
+--     fclose(out);
+--     return 0;
+-- }', '[{"input": "", "expected_output": "", "input_files": {"data.txt": "5 3"}, "expected_files": {"result.txt": "8\n"}}, {"input": "", "expected_output": "", "input_files": {"data.txt": "100 200"}, "expected_files": {"result.txt": "300\n"}}]', 2, 64, 25, 1);
 
 -- 7. Count Lines in File (C++) - FILE I/O
 INSERT INTO questions (title, description, language, starter_code, test_cases, time_limit, memory_limit, points, created_by) VALUES
