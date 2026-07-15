@@ -27,6 +27,7 @@ const TeacherDashboard = () => {
     title: "",
     description: "",
     category: "assignment",
+    chapter: "",
     starter_code: "",
     test_cases: '[\n  { "input": "", "expected_output": "" }\n]',
     time_limit: 2,
@@ -35,6 +36,13 @@ const TeacherDashboard = () => {
   };
   const [questionForm, setQuestionForm] = useState(emptyQuestionForm);
 
+  // Edit-question flow: which question (by id) is currently being edited,
+  // and the form data for it. Kept separate from questionForm/emptyQuestionForm
+  // (the Add form) so editing one question can't clobber an in-progress Add.
+  const [editingQuestionId, setEditingQuestionId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editFormError, setEditFormError] = useState("");
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
   useEffect(() => {
@@ -138,6 +146,7 @@ const TeacherDashboard = () => {
         title: questionForm.title,
         description: questionForm.description,
         category: questionForm.category,
+        chapter: questionForm.chapter.trim() || null,
         starter_code: questionForm.starter_code,
         test_cases: parsedTestCases,
         time_limit: Number(questionForm.time_limit) || 2,
@@ -156,7 +165,74 @@ const TeacherDashboard = () => {
       setSavingQuestion(false);
     }
   };
+  const handleStartEdit = (q) => {
+    setEditingQuestionId(q.id);
+    setEditForm({
+      title: q.title,
+      description: q.description,
+      category: q.category || "assignment",
+      chapter: q.chapter || "",
+      starter_code: q.starter_code || "",
+      // q.test_cases comes back from the API already parsed (JSONB), so
+      // stringify it to populate the editable textarea.
+      test_cases: JSON.stringify(q.test_cases || [], null, 2),
+      time_limit: q.time_limit,
+      memory_limit: q.memory_limit,
+      points: q.points,
+      is_active: q.is_active,
+    });
+    setEditFormError("");
+  };
 
+  const handleCancelEdit = () => {
+    setEditingQuestionId(null);
+    setEditForm(null);
+    setEditFormError("");
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    setEditFormError("");
+
+    let parsedTestCases;
+    try {
+      parsedTestCases = JSON.parse(editForm.test_cases);
+    } catch (parseErr) {
+      setEditFormError(
+        'Test cases must be valid JSON, e.g. [{ "input": "", "expected_output": "" }]',
+      );
+      return;
+    }
+    if (!Array.isArray(parsedTestCases) || parsedTestCases.length === 0) {
+      setEditFormError("Test cases must be a non-empty JSON array.");
+      return;
+    }
+
+    setSavingEdit(true);
+    try {
+      await api.put(`/teacher/questions/${editingQuestionId}`, {
+        title: editForm.title,
+        description: editForm.description,
+        category: editForm.category,
+        chapter: editForm.chapter.trim() || null,
+        starter_code: editForm.starter_code,
+        test_cases: parsedTestCases,
+        time_limit: Number(editForm.time_limit) || 2,
+        memory_limit: Number(editForm.memory_limit) || 64,
+        points: Number(editForm.points) || 10,
+        is_active: editForm.is_active,
+      });
+      handleCancelEdit();
+      fetchQuestions();
+      fetchAnalytics();
+    } catch (err) {
+      setEditFormError(
+        err.response?.data?.error || "Failed to update question",
+      );
+    } finally {
+      setSavingEdit(false);
+    }
+  };
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -447,6 +523,14 @@ const TeacherDashboard = () => {
           onToggle={handleToggleQuestion}
           onDelete={handleDeleteQuestion}
           semesterLabel={user.semester === "I" ? "C" : "C++"}
+          editingQuestionId={editingQuestionId}
+          editForm={editForm}
+          setEditForm={setEditForm}
+          editFormError={editFormError}
+          savingEdit={savingEdit}
+          onStartEdit={handleStartEdit}
+          onCancelEdit={handleCancelEdit}
+          onSaveEdit={handleSaveEdit}
         />
       )}
     </div>
@@ -469,189 +553,460 @@ const QuestionsPanel = ({
   onToggle,
   onDelete,
   semesterLabel,
-}) => (
-  <div className="px-6 pb-6">
-    <div
-      className={`${darkMode ? "bg-gray-800" : "bg-white"} rounded-lg shadow p-4 mb-4`}
-    >
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-bold">{semesterLabel} Questions</h2>
-        <button
-          onClick={() => setShowAddQuestion(!showAddQuestion)}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
-        >
-          {showAddQuestion ? "✕ Cancel" : "+ Add Question"}
-        </button>
-      </div>
+  editingQuestionId,
+  editForm,
+  setEditForm,
+  editFormError,
+  savingEdit,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+}) => {
+  // Chapter name -> expanded/collapsed. Starts empty (all collapsed) so
+  // the list reads as a table of contents first, matching the student
+  // side's ChapterAccordion.
+  const [expandedChapters, setExpandedChapters] = useState({});
+  const toggleChapterOpen = (chapterName) => {
+    setExpandedChapters((prev) => ({
+      ...prev,
+      [chapterName]: !prev[chapterName],
+    }));
+  };
 
-      {showAddQuestion && (
-        <form
-          onSubmit={onSubmit}
-          className="mt-4 space-y-3 border-t pt-4 border-gray-200 dark:border-gray-700"
-        >
-          {questionFormError && (
-            <div className="p-2 rounded bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
-              {questionFormError}
+  // Existing chapter names, for the datalist below — lets a teacher pick
+  // an already-used chapter instead of retyping it and risking a typo
+  // that would silently create a duplicate chapter group.
+  const existingChapters = [
+    ...new Set(questions.map((q) => q.chapter).filter(Boolean)),
+  ].sort();
+
+  // Group questions by chapter for display; anything without one falls
+  // back to "General" so older/un-categorized questions still show up.
+  const groupedQuestions = questions.reduce((acc, q) => {
+    const key = q.chapter || "General";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(q);
+    return acc;
+  }, {});
+  const chapterNames = Object.keys(groupedQuestions);
+
+  return (
+    <div className="px-6 pb-6">
+      <div
+        className={`${darkMode ? "bg-gray-800" : "bg-white"} rounded-lg shadow p-4 mb-4`}
+      >
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-bold">{semesterLabel} Questions</h2>
+          <button
+            onClick={() => setShowAddQuestion(!showAddQuestion)}
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
+          >
+            {showAddQuestion ? "✕ Cancel" : "+ Add Question"}
+          </button>
+        </div>
+
+        {showAddQuestion && (
+          <form
+            onSubmit={onSubmit}
+            className="mt-4 space-y-3 border-t pt-4 border-gray-200 dark:border-gray-700"
+          >
+            {questionFormError && (
+              <div className="p-2 rounded bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+                {questionFormError}
+              </div>
+            )}
+            <div className="grid grid-cols-3 gap-3">
+              <input
+                type="text"
+                placeholder="Title"
+                required
+                maxLength={255}
+                value={questionForm.title}
+                onChange={(e) =>
+                  setQuestionForm({ ...questionForm, title: e.target.value })
+                }
+                className="border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+              />
+              <input
+                type="text"
+                list="chapter-options"
+                placeholder="Chapter (e.g. Loops)"
+                maxLength={150}
+                value={questionForm.chapter}
+                onChange={(e) =>
+                  setQuestionForm({ ...questionForm, chapter: e.target.value })
+                }
+                className="border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+              />
+              <select
+                value={questionForm.category}
+                onChange={(e) =>
+                  setQuestionForm({ ...questionForm, category: e.target.value })
+                }
+                className="border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+              >
+                <option value="assignment">📘 Assignment</option>
+                <option value="practice">🧪 Extra Practice</option>
+              </select>
             </div>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              type="text"
-              placeholder="Title"
-              required
-              maxLength={255}
-              value={questionForm.title}
-              onChange={(e) =>
-                setQuestionForm({ ...questionForm, title: e.target.value })
-              }
-              className="border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
-            />
-            <select
-              value={questionForm.category}
-              onChange={(e) =>
-                setQuestionForm({ ...questionForm, category: e.target.value })
-              }
-              className="border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
-            >
-              <option value="assignment">📘 Assignment</option>
-              <option value="practice">🧪 Extra Practice</option>
-            </select>
-          </div>
-          <textarea
-            placeholder="Description / problem statement"
-            required
-            rows={3}
-            value={questionForm.description}
-            onChange={(e) =>
-              setQuestionForm({ ...questionForm, description: e.target.value })
-            }
-            className="w-full border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
-          />
-          <textarea
-            placeholder="Starter code (optional)"
-            rows={4}
-            value={questionForm.starter_code}
-            onChange={(e) =>
-              setQuestionForm({ ...questionForm, starter_code: e.target.value })
-            }
-            className="w-full border rounded px-3 py-2 font-mono text-sm dark:bg-gray-700 dark:border-gray-600"
-          />
-          <div>
-            <label className="text-sm font-semibold text-gray-500">
-              Test cases (JSON array of {"{ input, expected_output }"})
-            </label>
+            {/* Powers the chapter input's autocomplete above — picking an
+              existing name here keeps chapter grouping consistent instead
+              of splintering into near-duplicate chapters from typos. */}
+            <datalist id="chapter-options">
+              {existingChapters.map((ch) => (
+                <option key={ch} value={ch} />
+              ))}
+            </datalist>
             <textarea
+              placeholder="Description / problem statement"
               required
-              rows={4}
-              value={questionForm.test_cases}
+              rows={3}
+              value={questionForm.description}
               onChange={(e) =>
-                setQuestionForm({ ...questionForm, test_cases: e.target.value })
+                setQuestionForm({
+                  ...questionForm,
+                  description: e.target.value,
+                })
+              }
+              className="w-full border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+            />
+            <textarea
+              placeholder="Starter code (optional)"
+              rows={4}
+              value={questionForm.starter_code}
+              onChange={(e) =>
+                setQuestionForm({
+                  ...questionForm,
+                  starter_code: e.target.value,
+                })
               }
               className="w-full border rounded px-3 py-2 font-mono text-sm dark:bg-gray-700 dark:border-gray-600"
             />
-          </div>
-          <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-xs text-gray-500">Points</label>
-              <input
-                type="number"
-                min="1"
-                value={questionForm.points}
-                onChange={(e) =>
-                  setQuestionForm({ ...questionForm, points: e.target.value })
-                }
-                className="w-full border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Time limit (s)</label>
-              <input
-                type="number"
-                min="1"
-                value={questionForm.time_limit}
+              <label className="text-sm font-semibold text-gray-500">
+                Test cases (JSON array of {"{ input, expected_output }"})
+              </label>
+              <textarea
+                required
+                rows={4}
+                value={questionForm.test_cases}
                 onChange={(e) =>
                   setQuestionForm({
                     ...questionForm,
-                    time_limit: e.target.value,
+                    test_cases: e.target.value,
                   })
                 }
-                className="w-full border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+                className="w-full border rounded px-3 py-2 font-mono text-sm dark:bg-gray-700 dark:border-gray-600"
               />
             </div>
-            <div>
-              <label className="text-xs text-gray-500">Memory limit (MB)</label>
-              <input
-                type="number"
-                min="16"
-                value={questionForm.memory_limit}
-                onChange={(e) =>
-                  setQuestionForm({
-                    ...questionForm,
-                    memory_limit: e.target.value,
-                  })
-                }
-                className="w-full border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
-              />
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-gray-500">Points</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={questionForm.points}
+                  onChange={(e) =>
+                    setQuestionForm({ ...questionForm, points: e.target.value })
+                  }
+                  className="w-full border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Time limit (s)</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={questionForm.time_limit}
+                  onChange={(e) =>
+                    setQuestionForm({
+                      ...questionForm,
+                      time_limit: e.target.value,
+                    })
+                  }
+                  className="w-full border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">
+                  Memory limit (MB)
+                </label>
+                <input
+                  type="number"
+                  min="16"
+                  value={questionForm.memory_limit}
+                  onChange={(e) =>
+                    setQuestionForm({
+                      ...questionForm,
+                      memory_limit: e.target.value,
+                    })
+                  }
+                  className="w-full border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+                />
+              </div>
             </div>
-          </div>
-          <button
-            type="submit"
-            disabled={savingQuestion}
-            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm"
-          >
-            {savingQuestion ? "Saving..." : "Save Question"}
-          </button>
-        </form>
-      )}
-    </div>
+            <button
+              type="submit"
+              disabled={savingQuestion}
+              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm"
+            >
+              {savingQuestion ? "Saving..." : "Save Question"}
+            </button>
+          </form>
+        )}
+      </div>
 
-    <div
-      className={`${darkMode ? "bg-gray-800" : "bg-white"} rounded-lg shadow divide-y divide-gray-200 dark:divide-gray-700`}
-    >
-      {questions.length === 0 ? (
-        <p className="p-4 text-gray-500">No questions yet — add one above.</p>
-      ) : (
-        questions.map((q) => (
-          <div key={q.id} className="p-4 flex justify-between items-center">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold">{q.title}</span>
-                <span
-                  className={`text-xs px-2 py-0.5 rounded ${q.category === "practice" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}
+      <div
+        className={`${darkMode ? "bg-gray-800" : "bg-white"} rounded-lg shadow divide-y divide-gray-200 dark:divide-gray-700`}
+      >
+        {questions.length === 0 ? (
+          <p className="p-4 text-gray-500">No questions yet — add one above.</p>
+        ) : (
+          chapterNames.map((chapterName) => {
+            const isOpen = !!expandedChapters[chapterName];
+            const chapterQuestions = groupedQuestions[chapterName];
+            return (
+              <div key={chapterName}>
+                <button
+                  onClick={() => toggleChapterOpen(chapterName)}
+                  className={`w-full text-left px-4 py-3 flex items-center justify-between font-semibold ${
+                    darkMode ? "hover:bg-gray-700" : "hover:bg-gray-50"
+                  }`}
                 >
-                  {q.category === "practice" ? "🧪 Practice" : "📘 Assignment"}
-                </span>
-                {!q.is_active && (
-                  <span className="text-xs px-2 py-0.5 rounded bg-gray-200 text-gray-600">
-                    Inactive
+                  <span>
+                    {isOpen ? "▼" : "▶"} {chapterName}
                   </span>
-                )}
+                  <span className="text-sm text-gray-500 font-normal">
+                    {chapterQuestions.length}
+                  </span>
+                </button>
+                {isOpen &&
+                  chapterQuestions.map((q) =>
+                    editingQuestionId === q.id ? (
+                      <form
+                        key={q.id}
+                        onSubmit={onSaveEdit}
+                        className="p-4 pl-8 border-t border-gray-100 dark:border-gray-700 space-y-3 bg-gray-50 dark:bg-gray-900/40"
+                      >
+                        {editFormError && (
+                          <div className="p-2 rounded bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+                            {editFormError}
+                          </div>
+                        )}
+                        <div className="grid grid-cols-3 gap-3">
+                          <input
+                            type="text"
+                            placeholder="Title"
+                            required
+                            maxLength={255}
+                            value={editForm.title}
+                            onChange={(e) =>
+                              setEditForm({
+                                ...editForm,
+                                title: e.target.value,
+                              })
+                            }
+                            className="border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+                          />
+                          <input
+                            type="text"
+                            list="chapter-options"
+                            placeholder="Chapter (e.g. Loops)"
+                            maxLength={150}
+                            value={editForm.chapter}
+                            onChange={(e) =>
+                              setEditForm({
+                                ...editForm,
+                                chapter: e.target.value,
+                              })
+                            }
+                            className="border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+                          />
+                          <select
+                            value={editForm.category}
+                            onChange={(e) =>
+                              setEditForm({
+                                ...editForm,
+                                category: e.target.value,
+                              })
+                            }
+                            className="border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+                          >
+                            <option value="assignment">📘 Assignment</option>
+                            <option value="practice">🧪 Extra Practice</option>
+                          </select>
+                        </div>
+                        <textarea
+                          placeholder="Description / problem statement"
+                          required
+                          rows={3}
+                          value={editForm.description}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              description: e.target.value,
+                            })
+                          }
+                          className="w-full border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+                        />
+                        <textarea
+                          placeholder="Starter code (optional)"
+                          rows={4}
+                          value={editForm.starter_code}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              starter_code: e.target.value,
+                            })
+                          }
+                          className="w-full border rounded px-3 py-2 font-mono text-sm dark:bg-gray-700 dark:border-gray-600"
+                        />
+                        <div>
+                          <label className="text-sm font-semibold text-gray-500">
+                            Test cases (JSON array of{" "}
+                            {"{ input, expected_output }"})
+                          </label>
+                          <textarea
+                            required
+                            rows={4}
+                            value={editForm.test_cases}
+                            onChange={(e) =>
+                              setEditForm({
+                                ...editForm,
+                                test_cases: e.target.value,
+                              })
+                            }
+                            className="w-full border rounded px-3 py-2 font-mono text-sm dark:bg-gray-700 dark:border-gray-600"
+                          />
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <label className="text-xs text-gray-500">
+                              Points
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={editForm.points}
+                              onChange={(e) =>
+                                setEditForm({
+                                  ...editForm,
+                                  points: e.target.value,
+                                })
+                              }
+                              className="w-full border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500">
+                              Time limit (s)
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={editForm.time_limit}
+                              onChange={(e) =>
+                                setEditForm({
+                                  ...editForm,
+                                  time_limit: e.target.value,
+                                })
+                              }
+                              className="w-full border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500">
+                              Memory limit (MB)
+                            </label>
+                            <input
+                              type="number"
+                              min="16"
+                              value={editForm.memory_limit}
+                              onChange={(e) =>
+                                setEditForm({
+                                  ...editForm,
+                                  memory_limit: e.target.value,
+                                })
+                              }
+                              className="w-full border rounded px-3 py-2 dark:bg-gray-700 dark:border-gray-600"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="submit"
+                            disabled={savingEdit}
+                            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm"
+                          >
+                            {savingEdit ? "Saving..." : "Save Changes"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={onCancelEdit}
+                            className="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 text-sm"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div
+                        key={q.id}
+                        className="p-4 pl-8 flex justify-between items-center border-t border-gray-100 dark:border-gray-700"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold">{q.title}</span>
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded ${q.category === "practice" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}
+                            >
+                              {q.category === "practice"
+                                ? "🧪 Practice"
+                                : "📘 Assignment"}
+                            </span>
+                            {!q.is_active && (
+                              <span className="text-xs px-2 py-0.5 rounded bg-gray-200 text-gray-600">
+                                Inactive
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-500 mt-1">
+                            {q.points} points · {q.submission_count || 0}{" "}
+                            submissions
+                            {q.avg_score != null &&
+                              ` · avg ${parseFloat(q.avg_score).toFixed(1)}`}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => onStartEdit(q)}
+                            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => onToggle(q.id)}
+                            className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 text-sm"
+                          >
+                            {q.is_active ? "Deactivate" : "Activate"}
+                          </button>
+                          <button
+                            onClick={() => onDelete(q.id)}
+                            className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ),
+                  )}
               </div>
-              <div className="text-sm text-gray-500 mt-1">
-                {q.points} points · {q.submission_count || 0} submissions
-                {q.avg_score != null &&
-                  ` · avg ${parseFloat(q.avg_score).toFixed(1)}`}
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => onToggle(q.id)}
-                className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 text-sm"
-              >
-                {q.is_active ? "Deactivate" : "Activate"}
-              </button>
-              <button
-                onClick={() => onDelete(q.id)}
-                className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        ))
-      )}
+            );
+          })
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default TeacherDashboard;

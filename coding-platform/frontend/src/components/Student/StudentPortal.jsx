@@ -1335,7 +1335,7 @@ const StudentPortal = () => {
               <h3 className="font-bold text-purple-600 dark:text-purple-400 mb-2">
                 🧪 Test Results
               </h3>
-              <div className="text-sm">
+              <div className="text-sm mb-3">
                 <div>
                   Passed: {testResults.totalPassed}/{testResults.totalTests}
                 </div>
@@ -1344,6 +1344,66 @@ const StudentPortal = () => {
                 </div>
                 <div>Time: {testResults.executionTimeMs}ms</div>
               </div>
+
+              {Array.isArray(testResults.results) &&
+                testResults.results.length > 0 && (
+                  <div className="space-y-2">
+                    {testResults.results.map((r) => (
+                      <div
+                        key={r.testCaseIndex}
+                        className={`p-2 rounded border text-sm ${
+                          r.passed
+                            ? "border-green-300 bg-green-50 dark:bg-green-900/20"
+                            : "border-red-300 bg-red-50 dark:bg-red-900/20"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold">
+                            {r.passed ? "✅" : "❌"} Test {r.testCaseIndex + 1}
+                            {r.testCaseIndex === 0 && (
+                              <span className="ml-1 text-xs font-normal text-gray-400">
+                                (sample)
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {r.executionTimeMs}ms
+                          </span>
+                        </div>
+
+                        {!r.passed && (
+                          <div className="mt-1 text-xs text-red-600 dark:text-red-400">
+                            {r.error || "Wrong Answer"}
+                          </div>
+                        )}
+
+                        {/* Only the sample test case (index 0, already shown
+                            in full before submission) reveals its
+                            input/expected/actual output here. The rest stay
+                            pass/fail-only so hidden test cases can't be
+                            reverse-engineered one submission at a time. */}
+                        {r.testCaseIndex === 0 && (
+                          <div className="mt-2 space-y-1 font-mono text-xs whitespace-pre-wrap break-words">
+                            <div>
+                              <span className="text-gray-500">Input: </span>
+                              {r.input || "(none)"}
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Expected: </span>
+                              {r.expectedOutput || "(none)"}
+                            </div>
+                            <div>
+                              <span className="text-gray-500">
+                                Your output:{" "}
+                              </span>
+                              {r.actualOutput || "(none)"}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
             </div>
           )}
         </div>
