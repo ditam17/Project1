@@ -85,10 +85,15 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-md px-6 py-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
+          <span className="term-chrome mr-1">
+            <span className="term-dot red" />
+            <span className="term-dot amber" />
+            <span className="term-dot green" />
+          </span>
           <span className="text-3xl">🛡️</span>
           <div>
             <h1 className="text-xl font-bold">College Administrator</h1>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 font-sans">
               All student and teacher activity, by semester
             </p>
           </div>
@@ -143,7 +148,7 @@ const AdminDashboard = () => {
               onClick={() => setActiveSemester(sem)}
               className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 ${
                 activeSemester === sem
-                  ? "bg-blue-600 text-white"
+                  ? "bg-cyan-600 text-white"
                   : "bg-white text-gray-700 hover:bg-gray-100"
               }`}
             >
@@ -183,7 +188,7 @@ const AdminDashboard = () => {
                     <tr
                       key={s.id}
                       onClick={() => openStudent(s)}
-                      className="border-t border-gray-100 hover:bg-blue-50 cursor-pointer"
+                      className="border-t border-gray-100 hover:bg-cyan-50 cursor-pointer"
                     >
                       <td className="p-3">
                         <div className="font-semibold">{s.name}</div>
@@ -235,7 +240,7 @@ const AdminDashboard = () => {
                     <tr
                       key={t.id}
                       onClick={() => openTeacher(t)}
-                      className="border-t border-gray-100 hover:bg-blue-50 cursor-pointer"
+                      className="border-t border-gray-100 hover:bg-cyan-50 cursor-pointer"
                     >
                       <td className="p-3">
                         <div className="font-semibold">{t.name}</div>

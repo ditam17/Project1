@@ -92,7 +92,7 @@ const ChapterAccordion = ({
                         onClick={() => onSelect(q)}
                         className={`w-full text-left p-4 rounded-lg border transition-all ${
                           selectedQuestion?.id === q.id
-                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                            ? "border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20"
                             : darkMode
                               ? "border-gray-700 hover:bg-gray-700"
                               : "border-gray-200 hover:bg-gray-50"
@@ -813,10 +813,15 @@ const StudentPortal = () => {
         className={`${darkMode ? "bg-gray-800" : "bg-white"} shadow-md px-6 py-4 flex justify-between items-center`}
       >
         <div className="flex items-center gap-3">
+          <span className="term-chrome mr-1">
+            <span className="term-dot red" />
+            <span className="term-dot amber" />
+            <span className="term-dot green" />
+          </span>
           <span className="text-3xl">👨‍🎓</span>
           <div>
             <h1 className="text-xl font-bold">Student Portal</h1>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 font-sans">
               Welcome, {user.name} · Semester {user.semester}
             </p>
           </div>
@@ -848,7 +853,7 @@ const StudentPortal = () => {
         className={`${darkMode ? "bg-gray-800" : "bg-white"} px-6 py-3 shadow-sm`}
       >
         <div className="flex gap-3">
-          <span className="px-4 py-2 rounded-lg font-medium bg-blue-500 text-white shadow-md">
+          <span className="px-4 py-2 rounded-lg font-medium bg-cyan-500 text-white shadow-md">
             <span className="mr-2">{languageBadge.icon}</span>
             {languageBadge.name}
           </span>
@@ -943,13 +948,16 @@ const StudentPortal = () => {
             className={`${darkMode ? "bg-gray-800" : "bg-gray-100"} px-4 py-2 flex justify-between items-center`}
           >
             <div className="flex items-center gap-2">
-              <span className="font-semibold">
+              <span className="text-cyan-500">●</span>
+              <span className="font-semibold font-mono">
                 {selectedQuestion
                   ? selectedQuestion.title
                   : "Select a question"}
+                {selectedQuestion &&
+                  `.${selectedQuestion.language === "cpp" ? "cpp" : "c"}`}
               </span>
               {selectedQuestion && (
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-gray-500 font-sans">
                   ({selectedQuestion.language.toUpperCase()})
                 </span>
               )}
@@ -1008,7 +1016,7 @@ const StudentPortal = () => {
                       onClick={handleSubmit}
                       disabled={!selectedQuestion || isSubmitting}
                       title="Submit (Ctrl/Cmd+Shift+Enter)"
-                      className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
+                      className="px-3 py-1 bg-cyan-500 text-white rounded hover:bg-cyan-600 disabled:opacity-50 text-sm"
                     >
                       {isSubmitting ? "⏳ Submitting..." : "📤 Submit"}
                     </button>
@@ -1026,7 +1034,7 @@ const StudentPortal = () => {
                       onClick={handleSubmit}
                       disabled={isSubmitting}
                       title="Submit (Ctrl/Cmd+Shift+Enter)"
-                      className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
+                      className="px-3 py-1 bg-cyan-500 text-white rounded hover:bg-cyan-600 disabled:opacity-50 text-sm"
                     >
                       {isSubmitting ? "⏳ Submitting..." : "📤 Re-Submit"}
                     </button>
@@ -1043,10 +1051,10 @@ const StudentPortal = () => {
               className={`px-4 py-3 border-b max-h-28 overflow-y-auto ${
                 darkMode
                   ? "bg-gray-900 border-gray-700 text-gray-200"
-                  : "bg-blue-50 border-blue-100 text-gray-800"
+                  : "bg-cyan-50 border-cyan-100 text-gray-800"
               }`}
             >
-              <div className="text-xs font-bold uppercase tracking-wide text-blue-500 mb-1">
+              <div className="text-xs font-bold uppercase tracking-wide text-cyan-500 mb-1">
                 📋 Problem Statement
               </div>
               <p className="text-sm leading-relaxed">
@@ -1267,8 +1275,10 @@ const StudentPortal = () => {
             className={`h-48 ${darkMode ? "bg-gray-900" : "bg-gray-100"} border-t`}
           >
             <div className="px-4 py-2 text-sm font-semibold text-gray-500 flex justify-between">
-              <span>Terminal Output</span>
-              {output && <span className="text-xs">{output}</span>}
+              <span className="text-emerald-500">
+                $ ./terminal <span className="text-gray-500">output</span>
+              </span>
+              {output && <span className="text-xs font-sans">{output}</span>}
             </div>
             <div ref={terminalRef} className="h-full w-full px-4 pb-4" />
           </div>
@@ -1279,8 +1289,8 @@ const StudentPortal = () => {
           className={`w-72 ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-l overflow-y-auto p-4`}
         >
           <h2 className="text-lg font-bold mb-4">📊 Progress</h2>
-          <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+          <div className="mb-4 p-4 bg-cyan-50 dark:bg-cyan-900/20 rounded-lg">
+            <div className="text-2xl font-bold text-cyan-600 dark:text-cyan-400">
               {progress.solved_count}/{progress.total_questions}
             </div>
             <div className="text-sm text-gray-600 dark:text-gray-400">

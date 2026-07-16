@@ -96,69 +96,85 @@ const Login = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-96">
-        <h1 className="text-2xl font-bold text-center mb-1">Coding Platform</h1>
-        <p className="text-center text-gray-500 text-sm mb-6">
-          {ROLE_LABEL[role]}
-          {semester ? ` · Semester ${SEMESTER_LABEL[semester]}` : ""}
-        </p>
+      <div className="bg-white rounded-lg shadow-xl border border-gray-200 w-96 overflow-hidden">
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-200 bg-gray-900">
+          <span className="term-chrome">
+            <span className="term-dot red" />
+            <span className="term-dot amber" />
+            <span className="term-dot green" />
+          </span>
+          <span className="text-xs text-gray-400">login.sh</span>
+        </div>
 
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded mb-4">
-            {error}
-          </div>
-        )}
+        <div className="p-8">
+          <h1 className="text-2xl font-bold text-center mb-1">
+            Coding Platform
+          </h1>
+          <p className="text-center text-gray-500 text-sm mb-6 font-sans">
+            {ROLE_LABEL[role]}
+            {semester ? ` · Semester ${SEMESTER_LABEL[semester]}` : ""}
+          </p>
 
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2">
-              Login ID
-            </label>
-            <input
-              type="text"
-              value={loginId}
-              onChange={(e) => setLoginId(e.target.value)}
-              className="w-full px-3 py-2 border rounded"
-              required
-            />
-          </div>
+          {error && (
+            <div className="bg-red-50 border border-red-300 text-red-700 px-4 py-2 rounded mb-4 font-sans text-sm">
+              {error}
+            </div>
+          )}
 
-          <div className="mb-6">
-            <label className="block text-gray-700 text-sm font-bold mb-2">
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border rounded"
-              required
-            />
-          </div>
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label className="block text-gray-700 text-sm font-bold mb-2">
+                Login ID
+              </label>
+              <input
+                type="text"
+                value={loginId}
+                onChange={(e) => setLoginId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded font-mono text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400"
+                required
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-gray-700 text-sm font-bold mb-2">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded font-mono text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-cyan-600 text-white font-bold py-2 rounded hover:bg-cyan-700 disabled:opacity-60 transition-colors"
+            >
+              {loading ? "Logging in..." : "$ login"}
+            </button>
+          </form>
+
+          {hasDemo && (
+            <div className="mt-4 text-center text-sm text-gray-600 font-sans">
+              <button
+                onClick={fillDemo}
+                className="underline text-cyan-600 hover:text-cyan-700"
+              >
+                Fill demo credentials
+              </button>
+            </div>
+          )}
 
           <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700"
+            onClick={() => navigate(-1)}
+            className="w-full mt-4 text-sm text-gray-500 underline"
           >
-            {loading ? "Logging in..." : "Login"}
+            ← Back
           </button>
-        </form>
-
-        {hasDemo && (
-          <div className="mt-4 text-center text-sm text-gray-600">
-            <button onClick={fillDemo} className="underline">
-              Fill demo credentials
-            </button>
-          </div>
-        )}
-
-        <button
-          onClick={() => navigate(-1)}
-          className="w-full mt-4 text-sm text-gray-500 underline"
-        >
-          ← Back
-        </button>
+        </div>
       </div>
     </div>
   );

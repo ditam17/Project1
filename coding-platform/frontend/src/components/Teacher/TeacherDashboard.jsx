@@ -262,6 +262,11 @@ const TeacherDashboard = () => {
         className={`${darkMode ? "bg-gray-800" : "bg-white"} shadow-md px-6 py-4 flex justify-between items-center`}
       >
         <div className="flex items-center gap-3">
+          <span className="term-chrome mr-1">
+            <span className="term-dot red" />
+            <span className="term-dot amber" />
+            <span className="term-dot green" />
+          </span>
           <span className="text-3xl">👨‍🏫</span>
           <div>
             <h1 className="text-xl font-bold">
@@ -269,7 +274,7 @@ const TeacherDashboard = () => {
                 ? "C Programming Dashboard"
                 : "C++ Programming Dashboard"}
             </h1>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 font-sans">
               {user.name ? `${user.name} · ` : ""}Semester {user.semester} ·
               Monitor student progress
             </p>
@@ -279,13 +284,13 @@ const TeacherDashboard = () => {
           <div className="flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
             <button
               onClick={() => setDashboardView("students")}
-              className={`px-3 py-1.5 text-sm ${dashboardView === "students" ? "bg-blue-500 text-white" : darkMode ? "bg-gray-800" : "bg-white"}`}
+              className={`px-3 py-1.5 text-sm ${dashboardView === "students" ? "bg-cyan-500 text-white" : darkMode ? "bg-gray-800" : "bg-white"}`}
             >
               👥 Students
             </button>
             <button
               onClick={() => setDashboardView("questions")}
-              className={`px-3 py-1.5 text-sm ${dashboardView === "questions" ? "bg-blue-500 text-white" : darkMode ? "bg-gray-800" : "bg-white"}`}
+              className={`px-3 py-1.5 text-sm ${dashboardView === "questions" ? "bg-cyan-500 text-white" : darkMode ? "bg-gray-800" : "bg-white"}`}
             >
               📚 Questions
             </button>
@@ -331,7 +336,7 @@ const TeacherDashboard = () => {
         <div
           className={`${darkMode ? "bg-gray-800" : "bg-white"} p-4 rounded-lg shadow`}
         >
-          <div className="text-2xl font-bold text-blue-600">
+          <div className="text-2xl font-bold text-cyan-600">
             {completionRate}%
           </div>
           <div className="text-sm text-gray-500">Completion Rate</div>
@@ -349,7 +354,7 @@ const TeacherDashboard = () => {
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`px-3 py-1 rounded text-sm capitalize ${activeTab === tab ? "bg-blue-500 text-white" : darkMode ? "bg-gray-700 hover:bg-gray-600" : "bg-gray-100 hover:bg-gray-200"}`}
+                    className={`px-3 py-1 rounded text-sm capitalize ${activeTab === tab ? "bg-cyan-500 text-white" : darkMode ? "bg-gray-700 hover:bg-gray-600" : "bg-gray-100 hover:bg-gray-200"}`}
                   >
                     {tab}
                   </button>
@@ -365,7 +370,7 @@ const TeacherDashboard = () => {
                   <button
                     key={student.id}
                     onClick={() => handleStudentClick(student)}
-                    className={`w-full text-left p-3 rounded-lg mb-2 transition-all border ${selectedStudent?.id === student.id ? "bg-blue-50 dark:bg-blue-900/20 border-blue-500" : darkMode ? "hover:bg-gray-700" : "hover:bg-gray-50"}`}
+                    className={`w-full text-left p-3 rounded-lg mb-2 transition-all border ${selectedStudent?.id === student.id ? "bg-cyan-50 dark:bg-cyan-900/20 border-cyan-500" : darkMode ? "hover:bg-gray-700" : "hover:bg-gray-50"}`}
                   >
                     <div className="font-semibold">{student.name}</div>
                     <div className="text-sm text-gray-500">
@@ -415,7 +420,7 @@ const TeacherDashboard = () => {
                         <div
                           key={idx}
                           onClick={() => setSelectedSubmission(sub)}
-                          className={`p-4 rounded-lg border cursor-pointer transition-all ${selectedSubmission?.id === sub.id ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : darkMode ? "border-gray-700 hover:bg-gray-700" : "border-gray-200 hover:bg-gray-50"}`}
+                          className={`p-4 rounded-lg border cursor-pointer transition-all ${selectedSubmission?.id === sub.id ? "border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20" : darkMode ? "border-gray-700 hover:bg-gray-700" : "border-gray-200 hover:bg-gray-50"}`}
                         >
                           <div className="flex justify-between items-start">
                             <div>
@@ -599,7 +604,7 @@ const QuestionsPanel = ({
           <h2 className="text-lg font-bold">{semesterLabel} Questions</h2>
           <button
             onClick={() => setShowAddQuestion(!showAddQuestion)}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
+            className="px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 text-sm"
           >
             {showAddQuestion ? "✕ Cancel" : "+ Add Question"}
           </button>
@@ -958,7 +963,7 @@ const QuestionsPanel = ({
                           <div className="flex items-center gap-2">
                             <span className="font-semibold">{q.title}</span>
                             <span
-                              className={`text-xs px-2 py-0.5 rounded ${q.category === "practice" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}
+                              className={`text-xs px-2 py-0.5 rounded ${q.category === "practice" ? "bg-purple-100 text-purple-700" : "bg-cyan-100 text-cyan-700"}`}
                             >
                               {q.category === "practice"
                                 ? "🧪 Practice"
@@ -980,7 +985,7 @@ const QuestionsPanel = ({
                         <div className="flex gap-2">
                           <button
                             onClick={() => onStartEdit(q)}
-                            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                            className="px-3 py-1 bg-cyan-500 text-white rounded hover:bg-cyan-600 text-sm"
                           >
                             Edit
                           </button>
